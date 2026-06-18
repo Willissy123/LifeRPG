@@ -1,5 +1,7 @@
 import { useGameStore, armySizeCap } from '../store/useGameStore';
 import { UNIT_DEFINITIONS, UNIT_ORDER } from '../utils/unitDefinitions';
+import UnitIcon from './UnitIcon';
+import type { UnitType } from '../types';
 
 export default function ArmyPanel() {
   const { character, playerArmy, recruitUnit, dismissUnit } = useGameStore();
@@ -54,11 +56,8 @@ export default function ArmyPanel() {
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2 flex-1">
-                      {/* Color swatch */}
-                      <div
-                        className="w-8 h-8 rounded flex-shrink-0"
-                        style={{ background: def.color, border: '1px solid #ffffff22' }}
-                      />
+                      {/* Unit portrait */}
+                      <UnitIcon type={type as UnitType} color={def.color} size={36} />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm" style={{ color: '#f5e6c8' }}>
@@ -163,10 +162,7 @@ export default function ArmyPanel() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 flex-1">
-                        <div
-                          className="w-7 h-7 rounded flex-shrink-0"
-                          style={{ background: unit.color, border: '1px solid #ffffff22' }}
-                        />
+                        <UnitIcon type={unit.type} color={unit.color} size={32} />
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium" style={{ color: '#f5e6c8' }}>
