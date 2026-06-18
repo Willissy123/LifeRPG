@@ -372,18 +372,17 @@ export const useGameStore = create<GameStore>()(
       selectRegion: (regionId) => set({ selectedRegionId: regionId }),
 
       moveArmyTo: (regionId) => {
-        const { regions, selectedRegionId, playerArmy } = get();
-        if (!selectedRegionId || playerArmy.length === 0) return;
+        const { regions, playerArmy } = get();
+        if (playerArmy.length === 0) return;
 
-        const fromRegion = regions.find((r) => r.id === selectedRegionId);
+        const fromRegion = regions.find((r) => r.hasPlayerArmy);
         const toRegion = regions.find((r) => r.id === regionId);
         if (!fromRegion || !toRegion) return;
         if (!fromRegion.connections.includes(regionId)) return;
         if (toRegion.owner !== 'player') return;
-        if (!fromRegion.hasPlayerArmy) return;
 
         const newRegions = regions.map((r) => {
-          if (r.id === selectedRegionId) return { ...r, hasPlayerArmy: false };
+          if (r.id === fromRegion.id) return { ...r, hasPlayerArmy: false };
           if (r.id === regionId) return { ...r, hasPlayerArmy: true };
           return r;
         });
@@ -396,15 +395,14 @@ export const useGameStore = create<GameStore>()(
       },
 
       attackRegion: (regionId) => {
-        const { regions, selectedRegionId, playerArmy, factions, character } = get();
-        if (!selectedRegionId || playerArmy.length === 0) return;
+        const { regions, playerArmy, factions, character } = get();
+        if (playerArmy.length === 0) return;
 
-        const fromRegion = regions.find((r) => r.id === selectedRegionId);
+        const fromRegion = regions.find((r) => r.hasPlayerArmy);
         const toRegion = regions.find((r) => r.id === regionId);
         if (!fromRegion || !toRegion) return;
         if (!fromRegion.connections.includes(regionId)) return;
         if (toRegion.owner === 'player') return;
-        if (!fromRegion.hasPlayerArmy) return;
 
         const defendingFactionId = toRegion.owner;
         const defendingFaction = factions[defendingFactionId];
@@ -439,7 +437,7 @@ export const useGameStore = create<GameStore>()(
           projectiles: [],
           turn: 0,
           result: null,
-          attackingRegionId: selectedRegionId,
+          attackingRegionId: fromRegion.id,
           defendingRegionId: regionId,
           goldReward,
         };
