@@ -21,7 +21,10 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: '#1a0f0a', color: '#f5e6c8' }}>
       {screen !== 'battle' && <NavBar />}
-      <main style={{ paddingTop: screen === 'battle' ? 0 : '56px' }}>
+      <main style={{
+        paddingTop: screen === 'battle' ? 0 : '56px',
+        paddingBottom: screen === 'battle' ? 0 : '68px',
+      }}>
         {screen === 'dashboard' && <Dashboard />}
         {screen === 'tasks' && <TaskPanel />}
         {screen === 'character' && <CharacterSheet />}
