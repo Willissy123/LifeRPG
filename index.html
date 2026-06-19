@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Life RPG — Roman Campaign</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              parchment: '#f5e6c8',
+              'dark-brown': '#2c1810',
+              'medium-brown': '#4a2c1a',
+              'roman-gold': '#c9a84c',
+              'roman-red': '#8b1a1a',
+              'roman-dark': '#1a0f0a',
+            },
+            fontFamily: {
+              roman: ['Georgia', 'serif'],
+            },
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        background-color: #1a0f0a;
+        color: #f5e6c8;
+        font-family: Georgia, serif;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #2c1810;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #c9a84c;
+        border-radius: 4px;
+      }
+      .glow-gold {
+        text-shadow: 0 0 10px #c9a84c88;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
