@@ -14,25 +14,30 @@ const BATTLE_H = 380;
 const PANEL_H = 140;
 const CH = BATTLE_H + PANEL_H;
 
-const MAX_TROOPERS = 120;
+const MAX_TROOPERS = 48; // 120 is unreadable on mobile — 48 keeps Total War feel at scale
 
 // ── Color tables ──────────────────────────────────────────────────────────────
 type SC = { body: string; helmet: string; shield: string; crest: string };
 
 function soldierColors(unitType: string, side: 'player' | 'enemy'): SC {
   if (side === 'player') {
-    const body = unitType === 'Praetorian' ? '#6b0a0a' : '#8b1a1a';
-    return { body, helmet: unitType === 'Praetorian' ? '#f0d080' : '#c9a84c', shield: '#7a1515', crest: '#cc2222' };
+    // Always bright Roman red + gold — unmistakable even in a crowd
+    if (unitType === 'Praetorian')
+      return { body: '#c9a84c', helmet: '#f0d080', shield: '#8b6914', crest: '#ff8800' };
+    if (unitType === 'Archer')
+      return { body: '#e05020', helmet: '#c9a84c', shield: '#e05020', crest: '#ff3333' };
+    return { body: '#dd1c1c', helmet: '#c9a84c', shield: '#991111', crest: '#ff3333' };
   }
+  // Enemy: always cool/blue tones — clearly different from player red
   const map: Record<string, SC> = {
-    Hastati:    { body: '#2d5a27', helmet: '#888', shield: '#2d5a27', crest: '' },
-    Legionary:  { body: '#1a3a6b', helmet: '#6a6a6a', shield: '#1a3a6b', crest: '#661111' },
-    Archer:     { body: '#5a3a1a', helmet: '#778877', shield: '#5a3a1a', crest: '' },
-    Equites:    { body: '#6b3a1a', helmet: '#887755', shield: '#6b3a1a', crest: '' },
-    Ballista:   { body: '#4a4a2a', helmet: '#666', shield: '#4a4a2a', crest: '' },
-    Praetorian: { body: '#4a1a6b', helmet: '#aaa', shield: '#4a1a6b', crest: '#881188' },
+    Hastati:    { body: '#1e6b3a', helmet: '#5ec48a', shield: '#14532d', crest: '' },
+    Legionary:  { body: '#1a52a8', helmet: '#7db4f0', shield: '#1e3a8a', crest: '#9333ea' },
+    Archer:     { body: '#0e7490', helmet: '#67e8f9', shield: '#0c4a6e', crest: '' },
+    Equites:    { body: '#92400e', helmet: '#fcd34d', shield: '#78350f', crest: '' },
+    Ballista:   { body: '#374151', helmet: '#d1d5db', shield: '#1f2937', crest: '' },
+    Praetorian: { body: '#6d28d9', helmet: '#c4b5fd', shield: '#4c1d95', crest: '#a78bfa' },
   };
-  return map[unitType] ?? { body: '#555', helmet: '#777', shield: '#555', crest: '' };
+  return map[unitType] ?? { body: '#1a52a8', helmet: '#7db4f0', shield: '#1e3a8a', crest: '' };
 }
 
 // ── Soldier drawing ───────────────────────────────────────────────────────────
@@ -528,11 +533,35 @@ export default function BattleScreen() {
 
     drawGround(ctx);
 
+    // Side banners painted on ground so you always know which side is which
+    ctx.font = 'bold 13px Georgia';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(220,30,30,0.55)';
+    ctx.fillText('▲ ROME', 12, BATTLE_H - 14);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(40,100,220,0.55)';
+    ctx.fillText('ENEMY ▼', CW - 12, 42);
+    ctx.textAlign = 'left';
+
     // Dust particles (below soldiers)
     drawDust(ctx, dusts);
 
     // Sort regiments back-to-front for depth
     const sortedRegs = [...regiments].sort((a, b) => a.y - b.y);
+
+    // Regiment glow discs — drawn before soldiers so they sit behind
+    for (const reg of sortedRegs) {
+      if (reg.state === 'dead') continue;
+      const glowColor = reg.side === 'player' ? 'rgba(220,40,40,0.18)' : 'rgba(40,100,220,0.18)';
+      const borderColor = reg.side === 'player' ? 'rgba(220,40,40,0.5)' : 'rgba(40,100,220,0.5)';
+      ctx.beginPath();
+      ctx.arc(reg.x, reg.y, 42, 0, Math.PI * 2);
+      ctx.fillStyle = glowColor;
+      ctx.fill();
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
 
     for (const reg of sortedRegs) {
       // Draw dead troopers first (corpses)
@@ -541,8 +570,8 @@ export default function BattleScreen() {
         if (t.x < -20 || t.x > CW + 20 || t.y < -20 || t.y > BATTLE_H + 20) continue;
         ctx.globalAlpha = 0.5;
         if (simpleDraw) {
-          ctx.fillStyle = reg.color;
-          ctx.fillRect(t.x - 1.5, t.y - 3, 3, 6);
+          ctx.fillStyle = reg.side === 'player' ? '#ef4444' : '#3b82f6';
+          ctx.fillRect(t.x - 2, t.y - 4, 4, 6);
         } else {
           drawDeadTrooper(ctx, t.x, t.y, reg.facing, reg.unitType, reg.side);
         }
@@ -569,8 +598,8 @@ export default function BattleScreen() {
         if (t.x < -20 || t.x > CW + 20 || t.y < -20 || t.y > BATTLE_H + 20) continue;
 
         if (simpleDraw) {
-          ctx.fillStyle = reg.color;
-          ctx.fillRect(t.x - 1.5, t.y - 3, 3, 4);
+          ctx.fillStyle = reg.side === 'player' ? '#ef4444' : '#3b82f6';
+          ctx.fillRect(t.x - 2, t.y - 4, 4, 5);
         } else {
           drawTrooper(ctx, t.x, t.y, reg.facing, reg.unitType, reg.side, t.state, t.animTimer);
         }
