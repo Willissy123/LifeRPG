@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useGameStore } from '../store/gameStore';
 import { getDriver } from '../data/drivers2025';
 import { getTeam } from '../data/teams2025';
@@ -11,54 +10,64 @@ export default function StandingsScreen() {
   const [tab, setTab] = useState<Tab>('drivers');
   const { currentSeason } = useGameStore();
   const { driverStandings, constructorStandings } = currentSeason;
-
   const completedRaces = currentSeason.weekends.filter((w) => w.completed).length;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, tab === 'drivers' && styles.activeTab]}
-          onPress={() => setTab('drivers')}
-        >
-          <Text style={[styles.tabText, tab === 'drivers' && styles.activeTabText]}>DRIVERS</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, tab === 'constructors' && styles.activeTab]}
-          onPress={() => setTab('constructors')}
-        >
-          <Text style={[styles.tabText, tab === 'constructors' && styles.activeTabText]}>CONSTRUCTORS</Text>
-        </TouchableOpacity>
-      </View>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Tabs */}
+      <div style={{ display: 'flex', background: '#111120', flexShrink: 0 }}>
+        {(['drivers', 'constructors'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              flex: 1, padding: 14, background: 'none', border: 'none', cursor: 'pointer',
+              borderBottom: tab === t ? '2px solid #E0C040' : '2px solid transparent',
+              color: tab === t ? '#FFF' : '#666', fontWeight: 'bold', fontSize: 12, letterSpacing: 1,
+            }}
+          >
+            {t.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
-      <Text style={styles.raceCount}>After {completedRaces} / 24 races</Text>
+      <div style={{ color: '#555', fontSize: 11, textAlign: 'center', padding: '8px 0', flexShrink: 0 }}>
+        After {completedRaces} / 24 races
+      </div>
 
-      <ScrollView contentContainerStyle={styles.list}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 40px' }}>
         {tab === 'drivers' ? (
           driverStandings.map((ds) => {
             const driver = getDriver(ds.driverId);
             const team = driver ? getTeam(driver.teamId) : null;
             const isUser = driver?.isUser;
             return (
-              <View key={ds.driverId} style={[styles.row, isUser && styles.userRow]}>
-                <Text style={[styles.pos, isUser && styles.gold]}>{ds.position}</Text>
-                <View style={[styles.teamStrip, { backgroundColor: team?.color ?? '#888' }]} />
-                <View style={styles.info}>
-                  <Text style={[styles.name, isUser && styles.gold]}>
+              <div key={ds.driverId} style={{
+                display: 'flex', alignItems: 'center',
+                padding: '12px 8px', borderBottom: '1px solid #111', gap: 10,
+                background: isUser ? '#1a1a08' : 'transparent',
+                borderRadius: isUser ? 8 : 0,
+              }}>
+                <span style={{ color: isUser ? '#E0C040' : '#888', fontWeight: 'bold', fontSize: 15, width: 28 }}>
+                  {ds.position}
+                </span>
+                <div style={{ width: 3, height: 30, borderRadius: 1.5, background: team?.color ?? '#888', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: isUser ? '#E0C040' : '#FFF', fontWeight: 600, fontSize: 14 }}>
                     {driver?.shortName ?? '?'}{isUser ? ' ★' : ''}
-                  </Text>
-                  <Text style={[styles.teamLabel, { color: team?.color ?? '#888' }]}>
-                    {team?.shortName}
-                  </Text>
-                </View>
-                <View style={styles.statsCol}>
-                  <Text style={[styles.pts, isUser && styles.gold]}>{ds.points} pts</Text>
-                  <View style={styles.miStats}>
-                    {ds.wins > 0 && <Text style={styles.badge}>{ds.wins}W</Text>}
-                    {ds.podiums > 0 && <Text style={[styles.badge, { backgroundColor: '#1a1a2a' }]}>{ds.podiums}P</Text>}
-                  </View>
-                </View>
-              </View>
+                  </div>
+                  <div style={{ color: team?.color ?? '#888', fontSize: 11, marginTop: 2 }}>{team?.shortName}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: isUser ? '#E0C040' : '#FFF', fontWeight: 'bold', fontSize: 14, fontVariant: 'tabular-nums' }}>
+                    {ds.points} pts
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 2, justifyContent: 'flex-end' }}>
+                    {ds.wins > 0 && <span style={{ background: '#E0C040', borderRadius: 4, padding: '1px 5px', color: '#000', fontSize: 9, fontWeight: 'bold' }}>{ds.wins}W</span>}
+                    {ds.podiums > 0 && <span style={{ background: '#1a1a2a', borderRadius: 4, padding: '1px 5px', color: '#888', fontSize: 9 }}>{ds.podiums}P</span>}
+                  </div>
+                </div>
+              </div>
             );
           })
         ) : (
@@ -66,48 +75,33 @@ export default function StandingsScreen() {
             const team = getTeam(cs.teamId);
             const isUser = cs.teamId === 'apex_racing';
             return (
-              <View key={cs.teamId} style={[styles.row, isUser && styles.userRow]}>
-                <Text style={[styles.pos, isUser && styles.gold]}>{cs.position}</Text>
-                <View style={[styles.teamStrip, { backgroundColor: team?.color ?? '#888' }]} />
-                <View style={styles.info}>
-                  <Text style={[styles.name, isUser && styles.gold]}>
+              <div key={cs.teamId} style={{
+                display: 'flex', alignItems: 'center',
+                padding: '12px 8px', borderBottom: '1px solid #111', gap: 10,
+                background: isUser ? '#1a1a08' : 'transparent',
+                borderRadius: isUser ? 8 : 0,
+              }}>
+                <span style={{ color: isUser ? '#E0C040' : '#888', fontWeight: 'bold', fontSize: 15, width: 28 }}>
+                  {cs.position}
+                </span>
+                <div style={{ width: 3, height: 30, borderRadius: 1.5, background: team?.color ?? '#888', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: isUser ? '#E0C040' : '#FFF', fontWeight: 600, fontSize: 14 }}>
                     {team?.shortName ?? '?'}{isUser ? ' ★' : ''}
-                  </Text>
-                  <Text style={styles.teamLabel}>{team?.name}</Text>
-                </View>
-                <View style={styles.statsCol}>
-                  <Text style={[styles.pts, isUser && styles.gold]}>{cs.points} pts</Text>
-                  {cs.wins > 0 && <Text style={styles.badge}>{cs.wins} wins</Text>}
-                </View>
-              </View>
+                  </div>
+                  <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>{team?.name}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: isUser ? '#E0C040' : '#FFF', fontWeight: 'bold', fontSize: 14, fontVariant: 'tabular-nums' }}>
+                    {cs.points} pts
+                  </div>
+                  {cs.wins > 0 && <span style={{ color: '#888', fontSize: 10 }}>{cs.wins} wins</span>}
+                </div>
+              </div>
             );
           })
         )}
-      </ScrollView>
-    </View>
+      </div>
+    </div>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0f' },
-  tabs: { flexDirection: 'row', backgroundColor: '#111120' },
-  tab: { flex: 1, padding: 14, alignItems: 'center' },
-  activeTab: { borderBottomWidth: 2, borderBottomColor: '#E0C040' },
-  tabText: { color: '#666', fontWeight: 'bold', fontSize: 12, letterSpacing: 1 },
-  activeTabText: { color: '#FFFFFF' },
-  raceCount: { color: '#555', fontSize: 11, textAlign: 'center', paddingVertical: 8 },
-  list: { padding: 12, paddingBottom: 40 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#111', gap: 10 },
-  userRow: { backgroundColor: '#1a1a08', borderRadius: 8 },
-  pos: { color: '#888', fontWeight: 'bold', fontSize: 15, width: 28 },
-  gold: { color: '#E0C040' },
-  teamStrip: { width: 3, height: 30, borderRadius: 1.5 },
-  info: { flex: 1 },
-  name: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
-  teamLabel: { fontSize: 11, marginTop: 2 },
-  statsCol: { alignItems: 'flex-end' },
-  pts: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 14, fontVariant: ['tabular-nums'] },
-  miStats: { flexDirection: 'row', gap: 4, marginTop: 2 },
-  badge: { backgroundColor: '#E0C040', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
-  badgeText: { color: '#000', fontSize: 9, fontWeight: 'bold' },
-});

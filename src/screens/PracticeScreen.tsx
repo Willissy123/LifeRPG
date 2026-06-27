@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-} from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, PracticeResult } from '../types';
+import { useNavigate, useParams } from 'react-router-dom';
+import { PracticeResult } from '../types';
 import { DailyScore } from '../types/scoreTypes';
 import { ScoreEntry } from '../components/ScoreEntry';
 import { useGameStore } from '../store/gameStore';
@@ -13,31 +10,26 @@ import { getTeam } from '../data/teams2025';
 import { simulatePractice } from '../engine/PracticeEngine';
 import { formatLapTime } from '../engine/utils';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Practice'>;
-
 type Phase = 'score_entry' | 'simulating' | 'results';
 
-export default function PracticeScreen({ route, navigation }: Props) {
-  const { raceIndex, session } = route.params;
+export default function PracticeScreen() {
+  const { raceIndex: raceIndexStr, session } = useParams<{ raceIndex: string; session: string }>();
+  const raceIndex = Number(raceIndexStr);
+  const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>('score_entry');
   const [results, setResults] = useState<PracticeResult[] | null>(null);
 
-  const { setLifeScore, completePractice, currentSeason } = useGameStore();
-
+  const { completePractice, currentSeason } = useGameStore();
   const weekend = currentSeason.weekends[raceIndex];
-  const circuit = getCircuit(weekend.circuitId);
+  const circuit = getCircuit(weekend?.circuitId ?? '');
+  if (!circuit || !weekend) return null;
 
-  if (!circuit) return null;
-
-  const sessionKey = session.toLowerCase() as 'fp1' | 'fp2' | 'fp3';
-  const sessionIndex = { fp1: 0, fp2: 1, fp3: 2 }[sessionKey];
+  const sessionKey = (session ?? 'FP1').toLowerCase() as 'fp1' | 'fp2' | 'fp3';
+  const sessionIndex = { fp1: 0, fp2: 1, fp3: 2 }[sessionKey] ?? 0;
   const prepBonus = weekend.prepBonus;
 
   const handleScoreConfirm = (score: DailyScore) => {
-    setLifeScore(raceIndex, sessionKey, score.racePace); // legacy compat
     setPhase('simulating');
-
-    // Simulate asynchronously (short delay for UX)
     setTimeout(() => {
       const sim = simulatePractice({
         circuit,
@@ -54,104 +46,93 @@ export default function PracticeScreen({ route, navigation }: Props) {
   if (phase === 'score_entry') {
     return (
       <ScoreEntry
-        sessionLabel={session}
+        sessionLabel={session ?? 'FP1'}
         onConfirm={handleScoreConfirm}
-        onCancel={() => navigation.goBack()}
+        onCancel={() => navigate(-1)}
       />
     );
   }
 
   if (phase === 'simulating') {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator color="#E0C040" size="large" />
-        <Text style={styles.loadingText}>Simulating {session}...</Text>
-        <Text style={styles.loadingSubtext}>{circuit.name}</Text>
-      </View>
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '100%', gap: 12, background: '#0a0a0f',
+      }}>
+        <div style={{
+          width: 40, height: 40, border: '3px solid #333',
+          borderTopColor: '#E0C040', borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={{ color: '#FFF', fontSize: 18, fontWeight: 'bold' }}>Simulating {session}...</div>
+        <div style={{ color: '#888', fontSize: 14 }}>{circuit.name}</div>
+      </div>
     );
   }
 
-  // Results phase
-  const userResult = results?.find((r) => {
-    const d = getDriver(r.driverId);
-    return d?.isUser;
-  });
+  const userResult = results?.find((r) => getDriver(r.driverId)?.isUser);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerSession}>{session}</Text>
-        <Text style={styles.headerCircuit}>{circuit.name}</Text>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0f' }}>
+      <div style={{ padding: 20, borderBottom: '1px solid #222', flexShrink: 0 }}>
+        <div style={{ color: '#E0C040', fontSize: 12, fontWeight: 'bold', letterSpacing: 2 }}>{session}</div>
+        <div style={{ color: '#FFF', fontSize: 20, fontWeight: 'bold', marginTop: 4 }}>{circuit.name}</div>
         {userResult && (
-          <View style={styles.userResult}>
-            <Text style={styles.userPos}>P{userResult.position}</Text>
-            <Text style={styles.userTime}>{formatLapTime(userResult.lapTime)}</Text>
-            <Text style={styles.userGap}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 16, marginTop: 12,
+            background: '#1a1a08', borderRadius: 8, padding: 12,
+          }}>
+            <span style={{ color: '#E0C040', fontSize: 28, fontWeight: 'bold' }}>P{userResult.position}</span>
+            <span style={{ color: '#FFF', fontSize: 18, fontWeight: 'bold', fontVariant: 'tabular-nums' }}>
+              {formatLapTime(userResult.lapTime)}
+            </span>
+            <span style={{ color: '#888', fontSize: 14 }}>
               {userResult.position === 1 ? 'FASTEST' : `+${userResult.gap.toFixed(3)}s`}
-            </Text>
-          </View>
+            </span>
+          </div>
         )}
-      </View>
+      </div>
 
-      <ScrollView style={styles.list}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         {results?.map((r, idx) => {
           const driver = getDriver(r.driverId);
           const team = driver ? getTeam(driver.teamId) : null;
           const isUser = driver?.isUser ?? false;
           return (
-            <View key={r.driverId} style={[styles.resultRow, isUser && styles.userRow]}>
-              <Text style={[styles.pos, isUser && styles.userPosText]}>P{r.position}</Text>
-              <View style={[styles.teamStrip, { backgroundColor: team?.color ?? '#888' }]} />
-              <View style={styles.driverInfo}>
-                <Text style={[styles.driverName, isUser && styles.userPosText]}>
-                  {driver?.shortName ?? '???'}
-                  {isUser ? ' (YOU)' : ''}
-                </Text>
-                <Text style={[styles.teamName, { color: team?.color ?? '#888' }]}>
-                  {team?.shortName ?? ''}
-                </Text>
-              </View>
-              <Text style={[styles.lapTimeText, isUser && styles.userPosText]}>
+            <div key={r.driverId} style={{
+              display: 'flex', alignItems: 'center',
+              padding: '10px 16px', borderBottom: '1px solid #111',
+              background: isUser ? '#1a1a08' : 'transparent',
+            }}>
+              <span style={{ color: isUser ? '#E0C040' : '#888', fontSize: 13, width: 32 }}>P{r.position}</span>
+              <div style={{ width: 3, height: 28, borderRadius: 1.5, background: team?.color ?? '#888', margin: '0 8px', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ color: isUser ? '#E0C040' : '#FFF', fontSize: 13, fontWeight: 600 }}>
+                  {driver?.shortName ?? '???'}{isUser ? ' (YOU)' : ''}
+                </div>
+                <div style={{ color: team?.color ?? '#888', fontSize: 10, marginTop: 2 }}>{team?.shortName ?? ''}</div>
+              </div>
+              <span style={{ color: isUser ? '#E0C040' : '#CCC', fontSize: 13, fontVariant: 'tabular-nums' }}>
                 {formatLapTime(r.lapTime)}
-              </Text>
-              <Text style={styles.gapText}>
+              </span>
+              <span style={{ color: '#666', fontSize: 11, width: 64, textAlign: 'right', fontVariant: 'tabular-nums' }}>
                 {idx === 0 ? '' : `+${r.gap.toFixed(3)}`}
-              </Text>
-            </View>
+              </span>
+            </div>
           );
         })}
-      </ScrollView>
+      </div>
 
-      <TouchableOpacity style={styles.doneBtn} onPress={() => navigation.goBack()}>
-        <Text style={styles.doneBtnText}>Done — Back to Race Weekend</Text>
-      </TouchableOpacity>
-    </View>
+      <button
+        onClick={() => navigate(-1)}
+        style={{
+          margin: 16, background: '#1a1a2a', borderRadius: 10, padding: 16,
+          border: 'none', color: '#FFF', fontWeight: 600, fontSize: 15, cursor: 'pointer',
+        }}
+      >
+        Done — Back to Race Weekend
+      </button>
+    </div>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0f' },
-  loadingContainer: { flex: 1, backgroundColor: '#0a0a0f', justifyContent: 'center', alignItems: 'center', gap: 12 },
-  loadingText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
-  loadingSubtext: { color: '#888', fontSize: 14 },
-  header: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
-  headerSession: { color: '#E0C040', fontSize: 12, fontWeight: 'bold', letterSpacing: 2 },
-  headerCircuit: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold', marginTop: 4 },
-  userResult: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 12, backgroundColor: '#1a1a08', borderRadius: 8, padding: 12 },
-  userPos: { color: '#E0C040', fontSize: 28, fontWeight: 'bold' },
-  userTime: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', fontVariant: ['tabular-nums'] },
-  userGap: { color: '#888', fontSize: 14 },
-  list: { flex: 1 },
-  resultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#111' },
-  userRow: { backgroundColor: '#1a1a08' },
-  pos: { color: '#888', fontSize: 13, width: 32 },
-  userPosText: { color: '#E0C040' },
-  teamStrip: { width: 3, height: 28, borderRadius: 1.5, marginHorizontal: 8 },
-  driverInfo: { flex: 1 },
-  driverName: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
-  teamName: { fontSize: 10, marginTop: 2 },
-  lapTimeText: { color: '#CCCCCC', fontSize: 13, fontVariant: ['tabular-nums'] },
-  gapText: { color: '#666', fontSize: 11, width: 64, textAlign: 'right', fontVariant: ['tabular-nums'] },
-  doneBtn: { margin: 16, backgroundColor: '#1a1a2a', borderRadius: 10, padding: 16, alignItems: 'center' },
-  doneBtnText: { color: '#FFFFFF', fontWeight: '600', fontSize: 15 },
-});

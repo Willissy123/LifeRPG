@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   GameState,
   Season,
@@ -125,29 +124,20 @@ function rebuildStandings(weekends: RaceWeekend[]): {
 // ---- Store interface ----
 
 interface GameStore extends GameState {
-  // Init
   initGame: (playerName: string, playerNumber: number) => void;
   loadGame: () => Promise<void>;
   saveGame: () => Promise<void>;
 
-  // Legacy shim - kept for compatibility
   setLifeScore: (raceIndex: number, session: 'fp1' | 'fp2' | 'fp3' | 'qualifying' | 'race', score: number) => void;
 
-  // Session completion
   completePractice: (raceIndex: number, session: 'fp1' | 'fp2' | 'fp3', results: PracticeResult[]) => void;
   completeQualifying: (raceIndex: number, results: QualifyingResult[]) => void;
   completeRace: (raceIndex: number, results: FinishedRaceResult[]) => void;
 
-  // Car development
   purchaseUpgrade: (area: keyof CarDevelopment) => boolean;
-
-  // Season advance
   startNewSeason: () => void;
-
-  // Life score log
   logLifeScore: (score: number) => void;
 
-  // Getters
   getCurrentWeekend: () => RaceWeekend | null;
   getWeekend: (raceIndex: number) => RaceWeekend | null;
 }
@@ -166,7 +156,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   ...DEFAULT_STATE,
 
   initGame: (playerName, playerNumber) => {
-    // Update user driver name + number
     const season = buildInitialSeason(1);
     const state: GameState = {
       ...DEFAULT_STATE,
@@ -181,7 +170,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   loadGame: async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved: GameState = JSON.parse(raw);
         set(saved);
@@ -197,14 +186,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const { initGame, loadGame, saveGame, setLifeScore, completePractice,
               completeQualifying, completeRace, purchaseUpgrade, startNewSeason,
               logLifeScore, getCurrentWeekend, getWeekend, ...data } = state;
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
       console.warn('Failed to save game:', e);
     }
   },
 
-  setLifeScore: (raceIndex, session, score) => {
-    // No-op: sessions now tracked via sessionScores in completePractice/completeQualifying/completeRace
+  setLifeScore: (_raceIndex, _session, _score) => {
     get().saveGame();
   },
 
@@ -213,7 +201,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const weekends = state.currentSeason.weekends.map((w) => {
         if (w.raceIndex !== raceIndex) return w;
         const practiceResults = { ...w.practiceResults, [session]: results };
-        // Recalculate prep bonus from all completed FP sessions
         const fp1Score = w.sessionScores.fp1?.racePace ?? null;
         const fp2Score = w.sessionScores.fp2?.racePace ?? null;
         const fp3Score = w.sessionScores.fp3?.racePace ?? null;
@@ -248,14 +235,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         return { ...w, raceResult: results, completed: true };
       });
 
-      // Update car development budget from prize money
       const userResult = results.find((r) => r.driverId === USER_DRIVER_ID);
       const prizeMoneyM = userResult?.prizeMoneyM ?? 0;
       const dev = { ...state.currentSeason.carDevelopment };
       dev.totalBudgetEarned += prizeMoneyM;
       dev.effectiveCarRating = calcEffectiveCarRating(dev);
 
-      // Advance current race index
       const nextIndex = Math.min(raceIndex + 1, CALENDAR_2025.length - 1);
       const allComplete = weekends.every((w) => w.completed);
 
@@ -308,7 +293,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const nextNumber = finishedSeason.seasonNumber + 1;
       const newSeason = buildInitialSeason(nextNumber);
 
-      // Carry over car dev level (partial reset - you keep half the upgrades)
       const prevDev = finishedSeason.carDevelopment;
       newSeason.carDevelopment = {
         aero:        Math.floor(prevDev.aero        / 2),

@@ -1,5 +1,4 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { RaceCarState, RaceConditions } from '../types';
 import { DRIVERS_2025 } from '../data/drivers2025';
 import { TEAMS_2025 } from '../data/teams2025';
@@ -14,11 +13,7 @@ interface TimingTowerProps {
 }
 
 export const TimingTower: React.FC<TimingTowerProps> = ({
-  cars,
-  conditions,
-  currentLap,
-  totalLaps,
-  fastestLapHolder,
+  cars, conditions, currentLap, totalLaps, fastestLapHolder,
 }) => {
   const sorted = [...cars].sort((a, b) => {
     if (a.status === 'retired' && b.status !== 'retired') return 1;
@@ -27,19 +22,23 @@ export const TimingTower: React.FC<TimingTowerProps> = ({
   });
 
   return (
-    <View style={styles.container}>
+    <div style={{ flex: 1, background: '#0d0d18', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.lapCounter}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '6px 8px', borderBottom: '1px solid #222', flexShrink: 0,
+      }}>
+        <span style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 }}>
           LAP {Math.min(currentLap, totalLaps)} / {totalLaps}
-        </Text>
-        <Text style={styles.weatherBadge}>
+        </span>
+        <span style={{ color: '#AAA', fontSize: 11 }}>
           {conditions.weather === 'dry' ? '☀️ DRY' :
            conditions.weather === 'light_rain' ? '🌧 INTER' : '⛈ WET'}
-        </Text>
-      </View>
+        </span>
+      </div>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      {/* Rows */}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
         {sorted.map((car, idx) => {
           const driver = DRIVERS_2025.find((d) => d.id === car.driverId);
           const team = TEAMS_2025.find((t) => t.id === driver?.teamId);
@@ -49,185 +48,72 @@ export const TimingTower: React.FC<TimingTowerProps> = ({
           const isFastestLap = fastestLapHolder === car.driverId;
 
           return (
-            <View
-              key={car.driverId}
-              style={[
-                styles.row,
-                isUser && styles.userRow,
-                isRetired && styles.retiredRow,
-              ]}
-            >
+            <div key={car.driverId} style={{
+              display: 'flex', alignItems: 'center',
+              padding: '5px 4px',
+              borderBottom: '1px solid #181828',
+              background: isUser ? '#1a1a08' : 'transparent',
+              opacity: isRetired ? 0.45 : 1,
+            }}>
               {/* Position */}
-              <View style={[styles.posBox, isRetired && styles.posRetired]}>
-                <Text style={[styles.posText, isRetired && { color: '#666' }]}>
+              <div style={{ width: 28, textAlign: 'center' }}>
+                <span style={{ color: isRetired ? '#666' : '#FFF', fontWeight: 'bold', fontSize: 13 }}>
                   {isRetired ? 'OUT' : car.position}
-                </Text>
-              </View>
+                </span>
+              </div>
 
               {/* Team colour strip */}
-              <View style={[styles.teamStrip, { backgroundColor: teamColor }]} />
+              <div style={{ width: 3, height: 28, borderRadius: 1.5, background: teamColor, margin: '0 4px', flexShrink: 0 }} />
 
               {/* Driver info */}
-              <View style={styles.driverInfo}>
-                <Text style={[styles.driverCode, isRetired && styles.retiredText]}>
-                  {driver?.shortName ?? '???'}
-                  {isFastestLap && !isRetired ? ' ⚡' : ''}
-                </Text>
-                <Text style={[styles.teamName, { color: teamColor }]}>
-                  {team?.shortName ?? ''}
-                </Text>
-              </View>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: isRetired ? '#666' : '#FFF', fontWeight: 'bold', fontSize: 12 }}>
+                  {driver?.shortName ?? '???'}{isFastestLap && !isRetired ? ' ⚡' : ''}
+                </div>
+                <div style={{ color: teamColor, fontSize: 9, marginTop: 1 }}>{team?.shortName ?? ''}</div>
+              </div>
 
               {/* Tyre */}
-              <View style={[styles.tyreBadge, { backgroundColor: tyreColor(car.tyreCompound) + '22' }]}>
-                <Text style={[styles.tyreText, { color: tyreColor(car.tyreCompound) }]}>
+              <div style={{
+                background: tyreColor(car.tyreCompound) + '22',
+                borderRadius: 4, padding: '2px 5px', margin: '0 4px',
+                textAlign: 'center', minWidth: 30,
+              }}>
+                <div style={{ color: tyreColor(car.tyreCompound), fontWeight: 'bold', fontSize: 11 }}>
                   {car.tyreCompound}
-                </Text>
-                <Text style={styles.tyreAge}>{car.tyreAgeLaps}L</Text>
-              </View>
+                </div>
+                <div style={{ color: '#888', fontSize: 8 }}>{car.tyreAgeLaps}L</div>
+              </div>
 
               {/* Gap */}
-              <Text style={[styles.gap, isRetired && styles.retiredText]}>
-                {isRetired
-                  ? `DNF L${car.dnfLap}`
-                  : idx === 0
-                  ? 'LEADER'
-                  : formatGap(car.gapToLeader)}
-              </Text>
+              <span style={{
+                color: isRetired ? '#666' : '#FFF', fontSize: 11,
+                width: 56, textAlign: 'right', fontVariant: 'tabular-nums',
+              }}>
+                {isRetired ? `DNF L${car.dnfLap}` : idx === 0 ? 'LEADER' : formatGap(car.gapToLeader)}
+              </span>
 
               {/* Last lap */}
-              <Text style={[styles.lapTime, isFastestLap && styles.fastestLapTime]}>
+              <span style={{
+                color: isFastestLap ? '#CC00FF' : '#AAA', fontSize: 9,
+                width: 60, textAlign: 'right', fontVariant: 'tabular-nums',
+              }}>
                 {car.lastLapTime > 0 ? formatLapTime(car.lastLapTime) : '---'}
-              </Text>
+              </span>
 
-              {/* Pitting indicator */}
+              {/* Pit indicator */}
               {car.inPitLane && (
-                <View style={styles.pitIndicator}>
-                  <Text style={styles.pitText}>PIT</Text>
-                </View>
+                <div style={{
+                  background: '#FF8800', borderRadius: 3,
+                  padding: '1px 4px', marginLeft: 4,
+                }}>
+                  <span style={{ color: '#000', fontSize: 9, fontWeight: 'bold' }}>PIT</span>
+                </div>
               )}
-            </View>
+            </div>
           );
         })}
-      </ScrollView>
-    </View>
+      </div>
+    </div>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0d0d18',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
-  },
-  lapCounter: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 13,
-    letterSpacing: 1,
-  },
-  weatherBadge: {
-    color: '#AAAAAA',
-    fontSize: 11,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 5,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#181828',
-  },
-  userRow: {
-    backgroundColor: '#1a1a08',
-  },
-  retiredRow: {
-    opacity: 0.45,
-  },
-  posBox: {
-    width: 28,
-    alignItems: 'center',
-  },
-  posRetired: {
-    opacity: 0.5,
-  },
-  posText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  teamStrip: {
-    width: 3,
-    height: 28,
-    borderRadius: 1.5,
-    marginHorizontal: 4,
-  },
-  driverInfo: {
-    flex: 1,
-  },
-  driverCode: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  teamName: {
-    fontSize: 9,
-    marginTop: 1,
-  },
-  tyreBadge: {
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    marginHorizontal: 4,
-    alignItems: 'center',
-    minWidth: 30,
-  },
-  tyreText: {
-    fontWeight: 'bold',
-    fontSize: 11,
-  },
-  tyreAge: {
-    color: '#888',
-    fontSize: 8,
-  },
-  gap: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    width: 56,
-    textAlign: 'right',
-    fontVariant: ['tabular-nums'],
-  },
-  lapTime: {
-    color: '#AAAAAA',
-    fontSize: 9,
-    width: 60,
-    textAlign: 'right',
-    fontVariant: ['tabular-nums'],
-  },
-  fastestLapTime: {
-    color: '#CC00FF',
-  },
-  retiredText: {
-    color: '#666',
-  },
-  pitIndicator: {
-    backgroundColor: '#FF8800',
-    borderRadius: 3,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    marginLeft: 4,
-  },
-  pitText: {
-    color: '#000',
-    fontSize: 9,
-    fontWeight: 'bold',
-  },
-});
