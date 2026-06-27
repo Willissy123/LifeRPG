@@ -456,7 +456,7 @@ export function finaliseRace(
     return b.totalDistanceM - a.totalDistanceM;
   });
 
-  const winnerTime = sorted[0]?.totalDistanceM / ((circuit.lengthKm * 1000) / (circuit.poleTime * 1.15)) ?? 0;
+  const winnerTime = (sorted[0]?.totalDistanceM ?? 0) / ((circuit.lengthKm * 1000) / (circuit.poleTime * 1.15));
 
   return sorted.map((car, i) => {
     const pos = i + 1;
