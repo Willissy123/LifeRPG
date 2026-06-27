@@ -24,16 +24,21 @@ export function computeDerivedScores(
   focus: number,
   hydration = 5,
   meditation = 5,
+  fatigued = false,
 ): Pick<DailyScore, 'qualifyingPace' | 'racePace' | 'tyreMgmt' | 'wetWeather' | 'strategy'> {
   const sleepPct      = Math.min(sleep * 10, 100);
   const trainingPct   = training ? 100 : 30;
   const hydrationPct  = Math.min(hydration * 10, 100);
   const meditationPct = Math.min(meditation * 10, 100);
 
+  // Sleep-debt fatigue penalties
+  const qualiFatigueMult = fatigued ? 0.94 : 1;
+  const raceFatigueMult = fatigued ? 0.96 : 1;
+
   // Meditation boosts qualifying composure and wet-weather focus
-  const qualifyingPace = sleepPct * 0.44 + focus * 0.27 + todoist * 0.17 + meditationPct * 0.12;
+  const qualifyingPace = (sleepPct * 0.44 + focus * 0.27 + todoist * 0.17 + meditationPct * 0.12) * qualiFatigueMult;
   // Hydration sustains late-race pace (mapped into racePace baseline)
-  const racePace = sleepPct * 0.29 + focus * 0.22 + todoist * 0.21 + trainingPct * 0.14 + hydrationPct * 0.14;
+  const racePace = (sleepPct * 0.29 + focus * 0.22 + todoist * 0.21 + trainingPct * 0.14 + hydrationPct * 0.14) * raceFatigueMult;
   // Hydration boosts physical tyre endurance
   const tyreMgmt = trainingPct * 0.43 + sleepPct * 0.27 + focus * 0.17 + hydrationPct * 0.13;
   // Meditation improves wet-weather mental sharpness
@@ -57,11 +62,12 @@ export function buildDailyScore(
   hydration = 5,
   meditation = 5,
   date?: string,
+  fatigued = false,
 ): DailyScore {
   return {
     todoist, sleep, training, focus, hydration, meditation,
     date: date ?? new Date().toISOString().split('T')[0],
-    ...computeDerivedScores(todoist, sleep, training, focus, hydration, meditation),
+    ...computeDerivedScores(todoist, sleep, training, focus, hydration, meditation, fatigued),
   };
 }
 

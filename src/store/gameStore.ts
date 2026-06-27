@@ -25,10 +25,14 @@ import {
   AVAILABLE_SPONSORS,
   TeamTransferOffer,
   StrategyChoice,
+  WeeklyChallenge,
+  RaceHistoryEntry,
+  TPMessage,
 } from '../types';
 import CALENDAR_2025 from '../data/calendar2025';
 import { DRIVERS_2025, USER_DRIVER_ID } from '../data/drivers2025';
 import { TEAMS_2025 } from '../data/teams2025';
+import { getCircuit } from '../data/circuits';
 import { calcPrepBonus } from '../engine/utils';
 
 const STORAGE_KEY = '@f1_liferpg_v2';
@@ -44,6 +48,39 @@ function buildInitialConstructorStandings(): ConstructorStanding[] {
   return TEAMS_2025.map((t) => ({
     teamId: t.id, points: 0, wins: 0, position: 0,
   }));
+}
+
+// Deterministic pool of weekly challenges seeded by race index.
+const CHALLENGE_POOL: Omit<WeeklyChallenge, 'completed'>[] = [
+  { id: 'quali_top10', description: 'Qualify in the top 10', target: 'quali_position', targetValue: 10, reward: '+$1.5M budget', rewardType: 'budget', rewardValue: 1.5 },
+  { id: 'quali_top5',  description: 'Qualify in the top 5',  target: 'quali_position', targetValue: 5,  reward: '+$2M budget',   rewardType: 'budget', rewardValue: 2 },
+  { id: 'focus_85',    description: 'Score 85+ focus on race day', target: 'focus_score', targetValue: 85, reward: '+0.02 strategy bonus', rewardType: 'strategy_bonus', rewardValue: 0.02 },
+  { id: 'podium',      description: 'Finish on the podium',  target: 'race_position', targetValue: 3, reward: '+0.03 prep bonus next race', rewardType: 'prep_bonus', rewardValue: 0.03 },
+  { id: 'sleep_8',     description: 'Score 8+ sleep on race day', target: 'sleep_score', targetValue: 8, reward: '+$1M budget', rewardType: 'budget', rewardValue: 1 },
+  { id: 'top5',        description: 'Finish in the top 5',   target: 'race_position', targetValue: 5, reward: '+$2M budget', rewardType: 'budget', rewardValue: 2 },
+  { id: 'score_10',    description: 'Score 10+ points',      target: 'points', targetValue: 10, reward: '+$1.5M budget', rewardType: 'budget', rewardValue: 1.5 },
+  { id: 'win',         description: 'Win the race',          target: 'race_position', targetValue: 1, reward: '+0.04 prep bonus next race', rewardType: 'prep_bonus', rewardValue: 0.04 },
+];
+
+function buildWeeklyChallenges(raceIndex: number): WeeklyChallenge[] {
+  const n = CHALLENGE_POOL.length;
+  const picks = [
+    CHALLENGE_POOL[raceIndex % n],
+    CHALLENGE_POOL[(raceIndex * 3 + 2) % n],
+    CHALLENGE_POOL[(raceIndex * 5 + 4) % n],
+  ];
+  // De-dupe in case the seeds collide
+  const seen = new Set<string>();
+  const unique: Omit<WeeklyChallenge, 'completed'>[] = [];
+  for (const p of picks) {
+    if (!seen.has(p.id)) { seen.add(p.id); unique.push(p); }
+  }
+  let i = 0;
+  while (unique.length < 3) {
+    const c = CHALLENGE_POOL[i++ % n];
+    if (!seen.has(c.id)) { seen.add(c.id); unique.push(c); }
+  }
+  return unique.map((c) => ({ ...c, completed: false }));
 }
 
 function buildInitialWeekends(): RaceWeekend[] {
@@ -62,6 +99,7 @@ function buildInitialWeekends(): RaceWeekend[] {
     strategyChoice: null,
     prepBonus: 0,
     strategyBonus: 0,
+    weeklyChallenges: buildWeeklyChallenges(race.raceIndex),
     completed: false,
   }));
 }
@@ -79,10 +117,12 @@ function buildInitialSeason(seasonNumber: number): Season {
   };
 }
 
-function rebuildStandings(weekends: RaceWeekend[]): {
+function rebuildStandings(weekends: RaceWeekend[], prevDriver?: DriverStanding[]): {
   driver: DriverStanding[];
   constructor: ConstructorStanding[];
 } {
+  const prevPosMap = new Map<string, number>();
+  (prevDriver ?? []).forEach((d) => prevPosMap.set(d.driverId, d.position));
   const driverMap = new Map<string, DriverStanding>();
   DRIVERS_2025.forEach((d) => {
     driverMap.set(d.id, {
@@ -130,7 +170,11 @@ function rebuildStandings(weekends: RaceWeekend[]): {
   }
 
   const driverArr = [...driverMap.values()].sort((a, b) => b.points - a.points);
-  driverArr.forEach((d, i) => { d.position = i + 1; });
+  driverArr.forEach((d, i) => {
+    d.position = i + 1;
+    const prev = prevPosMap.get(d.driverId);
+    if (prev) d.previousPosition = prev;
+  });
   const ctorArr = [...ctorMap.values()].sort((a, b) => b.points - a.points);
   ctorArr.forEach((c, i) => { c.position = i + 1; });
   return { driver: driverArr, constructor: ctorArr };
@@ -188,10 +232,10 @@ interface GameStore extends GameState {
   setStrategyChoice: (raceIndex: number, choice: StrategyChoice) => void;
 
   completePractice: (raceIndex: number, session: 'fp1' | 'fp2' | 'fp3', results: PracticeResult[]) => void;
-  completeQualifying: (raceIndex: number, results: QualifyingResult[]) => void;
+  completeQualifying: (raceIndex: number, results: QualifyingResult[], score?: import('../types/scoreTypes').DailyScore) => void;
   completeSprintQualifying: (raceIndex: number, results: QualifyingResult[]) => void;
   completeSprintRace: (raceIndex: number, results: FinishedRaceResult[]) => void;
-  completeRace: (raceIndex: number, results: FinishedRaceResult[], startGrid: number, isWet: boolean) => void;
+  completeRace: (raceIndex: number, results: FinishedRaceResult[], startGrid: number, isWet: boolean, score?: import('../types/scoreTypes').DailyScore) => void;
 
   purchaseUpgrade: (area: keyof CarDevelopment) => boolean;
   activateSponsor: (sponsorId: string) => void;
@@ -202,6 +246,7 @@ interface GameStore extends GameState {
   setTransferOffer: (offer: TeamTransferOffer | null) => void;
   acceptTransferOffer: () => void;
   updateEngineer: (engineer: EngineerProfile) => void;
+  dismissTpMessage: () => void;
 
   getCurrentWeekend: () => RaceWeekend | null;
   getWeekend: (raceIndex: number) => RaceWeekend | null;
@@ -223,6 +268,10 @@ const DEFAULT_STATE: GameState = {
   rivalInfo: null,
   sponsorDeals: AVAILABLE_SPONSORS.map((s) => ({ ...s })),
   transferOffer: null,
+  sleepHistory: [],
+  raceHistory: [],
+  tpMessage: null,
+  recentLifeScores: [],
 };
 
 // Migrate old saves gracefully
@@ -234,9 +283,23 @@ function migrateState(raw: Partial<GameState>): GameState {
     achievements: raw.achievements ?? base.achievements,
     personalBests: { ...base.personalBests, ...(raw.personalBests ?? {}) },
     engineer: raw.engineer ?? base.engineer,
-    rivalInfo: raw.rivalInfo ?? null,
+    rivalInfo: raw.rivalInfo
+      ? {
+          driverId: raw.rivalInfo.driverId,
+          gapToRival: raw.rivalInfo.gapToRival ?? 0,
+          lastReaction: raw.rivalInfo.lastReaction ?? null,
+          lastReactionRace: raw.rivalInfo.lastReactionRace ?? -1,
+          h2hWins: raw.rivalInfo.h2hWins ?? 0,
+          h2hLosses: raw.rivalInfo.h2hLosses ?? 0,
+          h2hDraws: raw.rivalInfo.h2hDraws ?? 0,
+        }
+      : null,
     sponsorDeals: raw.sponsorDeals ?? base.sponsorDeals,
     transferOffer: raw.transferOffer ?? null,
+    sleepHistory: raw.sleepHistory ?? [],
+    raceHistory: raw.raceHistory ?? [],
+    tpMessage: raw.tpMessage ?? null,
+    recentLifeScores: raw.recentLifeScores ?? [],
     currentSeason: raw.currentSeason
       ? {
           ...raw.currentSeason,
@@ -249,6 +312,7 @@ function migrateState(raw: Partial<GameState>): GameState {
             sprintGridPosition: w.sprintGridPosition ?? null,
             sprintRaceResult: w.sprintRaceResult ?? null,
             strategyChoice: w.strategyChoice ?? null,
+            weeklyChallenges: w.weeklyChallenges ?? buildWeeklyChallenges(w.raceIndex),
           })),
           carDevelopment: {
             ...raw.currentSeason.carDevelopment,
@@ -301,7 +365,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         completePractice, completeQualifying, completeSprintQualifying,
         completeSprintRace, completeRace, purchaseUpgrade, activateSponsor,
         deactivateSponsor, startNewSeason, logLifeScore, unlockAchievement,
-        setTransferOffer, acceptTransferOffer, updateEngineer,
+        setTransferOffer, acceptTransferOffer, updateEngineer, dismissTpMessage,
         getCurrentWeekend, getWeekend, exportSave, importSave,
         ...data
       } = state;
@@ -341,15 +405,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().saveGame();
   },
 
-  completeQualifying: (raceIndex, results) => {
+  completeQualifying: (raceIndex, results, score) => {
     const userResult = results.find((r) => r.driverId === USER_DRIVER_ID);
     const gridPos = userResult?.gridPosition ?? 20;
     set((state) => {
-      const weekends = state.currentSeason.weekends.map((w) =>
-        w.raceIndex !== raceIndex ? w : {
-          ...w, qualifyingResult: results, userGridPosition: gridPos,
-        }
-      );
+      let extraBudget = 0;
+      const weekends = state.currentSeason.weekends.map((w) => {
+        if (w.raceIndex !== raceIndex) return w;
+        // Complete quali-position challenges
+        const weeklyChallenges = w.weeklyChallenges.map((c) => {
+          if (c.completed || c.target !== 'quali_position') return c;
+          if (gridPos <= c.targetValue) {
+            if (c.rewardType === 'budget') extraBudget += c.rewardValue;
+            return { ...c, completed: true };
+          }
+          return c;
+        });
+        return {
+          ...w, qualifyingResult: results, userGridPosition: gridPos, weeklyChallenges,
+          sessionScores: { ...w.sessionScores, qualifying: score ?? w.sessionScores.qualifying },
+        };
+      });
+      const sleepHistory = score ? [...state.sleepHistory, score.sleep].slice(-5) : state.sleepHistory;
+      const recentLifeScores = score ? [...state.recentLifeScores, score.qualifyingPace].slice(-8) : state.recentLifeScores;
       let { personalBests, achievements } = state;
       if (gridPos === 1) {
         personalBests = {
@@ -362,8 +440,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
             ? { ...a, unlockedAt: new Date().toISOString().split('T')[0] }
             : a
         );
+      } else {
+        personalBests = {
+          ...personalBests,
+          bestGridPosition: Math.min(personalBests.bestGridPosition, gridPos),
+        };
       }
-      return { currentSeason: { ...state.currentSeason, weekends }, personalBests, achievements };
+      const dev = { ...state.currentSeason.carDevelopment };
+      if (extraBudget > 0) {
+        dev.totalBudgetEarned += extraBudget;
+        dev.effectiveCarRating = calcEffectiveCarRating(dev);
+      }
+      return {
+        currentSeason: { ...state.currentSeason, weekends, carDevelopment: dev },
+        personalBests, achievements, sleepHistory, recentLifeScores,
+      };
     });
     get().saveGame();
   },
@@ -411,15 +502,54 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().saveGame();
   },
 
-  completeRace: (raceIndex, results, startGrid, isWet) => {
+  completeRace: (raceIndex, results, startGrid, isWet, score) => {
     set((state) => {
-      const weekends = state.currentSeason.weekends.map((w) =>
-        w.raceIndex !== raceIndex ? w : { ...w, raceResult: results, completed: true }
-      );
-
       const userResult = results.find((r) => r.driverId === USER_DRIVER_ID);
       const isDnf = !!userResult?.dnfLap;
       const pos = userResult?.position ?? 20;
+      const raceScore = score ?? state.currentSeason.weekends[raceIndex]?.sessionScores.race;
+      const trainedThisRace = !!raceScore?.training;
+
+      // ---- Weekly challenge completion (race-side) + reward accumulation ----
+      let extraBudget = 0;
+      let extraStrategyBonus = 0;
+      let extraPrepBonusNext = 0;
+      const completeRaceChallenges = (cs: WeeklyChallenge[]): WeeklyChallenge[] =>
+        cs.map((c) => {
+          if (c.completed) return c;
+          let met = false;
+          if (c.target === 'race_position') met = !isDnf && pos <= c.targetValue;
+          else if (c.target === 'points') met = (userResult?.points ?? 0) >= c.targetValue;
+          else if (c.target === 'focus_score') met = (raceScore?.focus ?? 0) >= c.targetValue;
+          else if (c.target === 'sleep_score') met = (raceScore?.sleep ?? 0) >= c.targetValue;
+          if (!met) return c;
+          if (c.rewardType === 'budget') extraBudget += c.rewardValue;
+          else if (c.rewardType === 'strategy_bonus') extraStrategyBonus += c.rewardValue;
+          else if (c.rewardType === 'prep_bonus') extraPrepBonusNext += c.rewardValue;
+          return { ...c, completed: true };
+        });
+
+      const nextIndex = Math.min(raceIndex + 1, CALENDAR_2025.length - 1);
+
+      const weekends = state.currentSeason.weekends.map((w) => {
+        if (w.raceIndex === raceIndex) {
+          return {
+            ...w,
+            raceResult: results,
+            completed: true,
+            weeklyChallenges: completeRaceChallenges(w.weeklyChallenges),
+            strategyBonus: w.strategyBonus + extraStrategyBonus,
+            sessionScores: { ...w.sessionScores, race: raceScore ?? w.sessionScores.race },
+          };
+        }
+        return w;
+      });
+
+      // Apply prep-bonus reward to the next race
+      if (extraPrepBonusNext > 0 && nextIndex !== raceIndex) {
+        const nw = weekends[nextIndex];
+        if (nw) weekends[nextIndex] = { ...nw, prepBonus: nw.prepBonus + extraPrepBonusNext };
+      }
 
       // Update personal bests
       let pb = { ...state.personalBests };
@@ -448,6 +578,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
         pb.hadDnfLastRace = isDnf;
       }
 
+      // Training streak
+      if (trainedThisRace) {
+        pb.trainingStreak += 1;
+        if (pb.trainingStreak > pb.longestTrainingStreak) pb.longestTrainingStreak = pb.trainingStreak;
+      } else {
+        pb.trainingStreak = 0;
+      }
+      // Every 3 consecutive training races -> +0.01 tyre-mgmt (strategy) bonus next race
+      if (trainedThisRace && pb.trainingStreak > 0 && pb.trainingStreak % 3 === 0 && nextIndex !== raceIndex) {
+        const nw = weekends[nextIndex];
+        if (nw) weekends[nextIndex] = { ...nw, strategyBonus: nw.strategyBonus + 0.01 };
+      }
+
+      // Sleep history (max 5)
+      const sleepHistory = raceScore
+        ? [...state.sleepHistory, raceScore.sleep].slice(-5)
+        : state.sleepHistory;
+
+      // Recent life scores (qualifying pace, max 8)
+      const recentLifeScores = raceScore
+        ? [...state.recentLifeScores, raceScore.qualifyingPace].slice(-8)
+        : state.recentLifeScores;
+
       // Update achievements
       let ach = checkAndUnlockAchievements(
         state.achievements, pb, userResult,
@@ -458,27 +611,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
         state.personalBests.hadDnfLastRace,
       );
 
-      // Prize money with sponsor multiplier
+      // Prize money with sponsor multiplier + challenge budget rewards
       const dev = { ...state.currentSeason.carDevelopment };
       const prize = (userResult?.prizeMoneyM ?? 0) * dev.prizeMultiplier;
-      dev.totalBudgetEarned += prize;
+      dev.totalBudgetEarned += prize + extraBudget;
       dev.effectiveCarRating = calcEffectiveCarRating(dev);
 
-      const nextIndex = Math.min(raceIndex + 1, CALENDAR_2025.length - 1);
       const allComplete = weekends.every((w) => w.completed);
-      const { driver, constructor: ctor } = rebuildStandings(weekends);
+      const { driver, constructor: ctor } = rebuildStandings(weekends, state.currentSeason.driverStandings);
 
       // Rival tracking
       const userStanding = driver.find((d) => d.driverId === USER_DRIVER_ID);
       const userPos = userStanding?.position ?? 20;
       let rivalInfo = state.rivalInfo;
       if (!rivalInfo && userPos > 1) {
-        // Assign rival as driver directly ahead in standings
         const aheadDriver = driver[userPos - 2];
         if (aheadDriver && aheadDriver.driverId !== USER_DRIVER_ID) {
           rivalInfo = {
             driverId: aheadDriver.driverId,
             gapToRival: (userStanding?.points ?? 0) - (aheadDriver.points ?? 0),
+            lastReaction: null, lastReactionRace: -1,
+            h2hWins: 0, h2hLosses: 0, h2hDraws: 0,
           };
         }
       } else if (rivalInfo) {
@@ -488,6 +641,70 @@ export const useGameStore = create<GameStore>((set, get) => ({
           gapToRival: (userStanding?.points ?? 0) - (rivalStanding?.points ?? 0),
         };
       }
+
+      // Rival head-to-head + reaction quote
+      if (rivalInfo) {
+        const rivalResult = results.find((r) => r.driverId === rivalInfo!.driverId);
+        const rivalDnf = !!rivalResult?.dnfLap;
+        const rivalDriver = DRIVERS_2025.find((d) => d.id === rivalInfo!.driverId);
+        const rivalName = rivalDriver?.name ?? 'Rival';
+        const playerName = state.playerName;
+        let h2hWins = rivalInfo.h2hWins;
+        let h2hLosses = rivalInfo.h2hLosses;
+        let h2hDraws = rivalInfo.h2hDraws;
+        let reaction: string | null = rivalInfo.lastReaction;
+        if (userResult && rivalResult) {
+          if (isDnf && rivalDnf) {
+            h2hDraws += 1;
+            reaction = `${rivalName}: "Racing, eh? At least we're both suffering."`;
+          } else if (rivalDnf || (!isDnf && pos < rivalResult.position)) {
+            h2hWins += 1;
+            if (!isDnf && pos <= 3) reaction = `${rivalName}: "Impressive pace today. We'll have an answer next race."`;
+            else reaction = `${rivalName}: "Lucky today, ${playerName}. Don't get comfortable."`;
+          } else {
+            h2hLosses += 1;
+            if (!rivalDnf && rivalResult.position + 3 < pos) reaction = `${rivalName}: "This is just the beginning of my comeback."`;
+            else reaction = `${rivalName}: "Better luck next time, ${playerName}."`;
+          }
+        }
+        rivalInfo = { ...rivalInfo, h2hWins, h2hLosses, h2hDraws, lastReaction: reaction, lastReactionRace: raceIndex };
+      }
+
+      // Team principal message
+      let tpMessage: TPMessage | null = state.tpMessage;
+      const circuitName = getCircuit(weekends[raceIndex]?.circuitId ?? '')?.name ?? 'the next race';
+      const name = state.playerName;
+      const newTp = (msg: string, type: TPMessage['type']): TPMessage => ({ message: msg, type, raceIndex });
+      if (userResult?.position === 1 && pb.totalWins === 1) {
+        tpMessage = newTp(`The team is over the moon, ${name}! Your first win — savour it.`, 'positive');
+      } else if (isDnf) {
+        tpMessage = newTp(`We need reliability from you, ${name}. A DNF hurts the whole team.`, 'warning');
+      } else if (userPos >= 10) {
+        tpMessage = newTp(`We need to talk about your results. P${userPos} isn't where we should be.`, 'warning');
+      }
+      // Mid/late-season check-ins keyed off standing (override single-event ones if hit)
+      if (raceIndex === 8 || raceIndex === 16) {
+        const phaseLabel = raceIndex === 8 ? 'mid-season' : 'late-season';
+        if (userPos <= 3) tpMessage = newTp(`You're flying ${name}! Keep this up and the championship is ours. (${phaseLabel} review)`, 'positive');
+        else if (userPos <= 8) tpMessage = newTp(`Good work, but we need more. The top 3 is within reach. (${phaseLabel} review)`, 'neutral');
+        else tpMessage = newTp(`We need to discuss your targets. The board wants results by ${circuitName}. (${phaseLabel} review)`, 'warning');
+      }
+
+      // Race history entry
+      const grid = state.currentSeason.weekends[raceIndex]?.userGridPosition ?? startGrid;
+      const circuitForHistory = getCircuit(weekends[raceIndex]?.circuitId ?? '');
+      const historyEntry: RaceHistoryEntry = {
+        raceIndex,
+        circuitName: circuitForHistory?.name ?? '',
+        circuitFlag: circuitForHistory?.flag ?? '🏁',
+        season: state.currentSeason.seasonNumber,
+        position: isDnf ? null : pos,
+        points: userResult?.points ?? 0,
+        gridPosition: grid,
+        fastestLap: !!userResult?.fastestLap,
+        dnf: isDnf,
+      };
+      const raceHistory = [...state.raceHistory, historyEntry];
 
       // Check champion achievement
       if (allComplete && driver[0]?.driverId === USER_DRIVER_ID) {
@@ -501,14 +718,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const userPts = driver.find((d) => d.driverId === USER_DRIVER_ID)?.points ?? 0;
         const maxPts = driver[0]?.points ?? 1;
         if (userPts / maxPts > 0.4) {
-          // Offer from a top team
           const topTeams = [
             { teamId: 'red_bull', teamName: 'Oracle Red Bull Racing', carRatingBonus: 8 },
             { teamId: 'ferrari', teamName: 'Scuderia Ferrari', carRatingBonus: 7 },
             { teamId: 'mclaren', teamName: 'McLaren F1 Team', carRatingBonus: 6 },
           ];
-          const offer = topTeams[Math.floor(Math.random() * topTeams.length)];
-          transferOffer = offer;
+          transferOffer = topTeams[Math.floor(Math.random() * topTeams.length)];
         }
       }
 
@@ -525,6 +740,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         achievements: ach,
         rivalInfo,
         transferOffer,
+        sleepHistory,
+        recentLifeScores,
+        raceHistory,
+        tpMessage,
       };
     });
     get().saveGame();
@@ -659,6 +878,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().saveGame();
   },
 
+  dismissTpMessage: () => {
+    set({ tpMessage: null });
+    get().saveGame();
+  },
+
   getCurrentWeekend: () => {
     const state = get();
     return state.currentSeason.weekends[state.currentSeason.currentRaceIndex] ?? null;
@@ -675,7 +899,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       completePractice, completeQualifying, completeSprintQualifying,
       completeSprintRace, completeRace, purchaseUpgrade, activateSponsor,
       deactivateSponsor, startNewSeason, logLifeScore, unlockAchievement,
-      setTransferOffer, acceptTransferOffer, updateEngineer,
+      setTransferOffer, acceptTransferOffer, updateEngineer, dismissTpMessage,
       getCurrentWeekend, getWeekend, exportSave, importSave,
       ...data
     } = state;

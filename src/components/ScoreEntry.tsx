@@ -14,13 +14,20 @@ interface ScoreEntryProps {
   // Sponsor bonuses applied transparently
   focusBonus?: number;
   sleepBonus?: number;
+  // Sleep-debt fatigue (3+ of last 3 sleep scores < 6.5)
+  fatigued?: boolean;
 }
+
+function sleepEmoji(v: number) { return v < 6 ? '😴' : v < 7 ? '😐' : v < 8.5 ? '😊' : '🌟'; }
+function hydrationEmoji(v: number) { return v < 5 ? '🏜️' : v < 7 ? '💧' : v < 9 ? '💦' : '🌊'; }
+function meditationEmoji(v: number) { return v < 4 ? '😤' : v <= 7 ? '🧘' : '🌙'; }
+function focusEmoji(v: number) { return v < 60 ? '😵' : v < 80 ? '🎯' : v < 95 ? '💡' : '🔥'; }
 
 export const ScoreEntry: React.FC<ScoreEntryProps> = ({
   sessionLabel, onConfirm, onCancel,
   initialTodoist = 50, initialSleep = 7, initialTraining = false,
   initialFocus = 50, initialHydration = 5, initialMeditation = 5,
-  focusBonus = 0, sleepBonus = 0,
+  focusBonus = 0, sleepBonus = 0, fatigued = false,
 }) => {
   const [todoist, setTodoist]       = useState(String(initialTodoist));
   const [sleep, setSleep]           = useState(String(initialSleep));
@@ -37,7 +44,7 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
   const hydrationVal = Math.min(10, Math.max(0, Number(hydration) || 0));
   const meditationVal = Math.min(10, Math.max(0, Number(meditation) || 0));
 
-  const derived = computeDerivedScores(todoistVal, sleepVal, training, focusVal, hydrationVal, meditationVal);
+  const derived = computeDerivedScores(todoistVal, sleepVal, training, focusVal, hydrationVal, meditationVal, fatigued);
 
   const bars = [
     { label: 'Qualifying Pace', value: derived.qualifyingPace, color: '#FF2800', desc: 'Sleep + meditation + focus → raw speed' },
@@ -48,7 +55,7 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
   ];
 
   const handleConfirm = () => {
-    onConfirm(buildDailyScore(todoistVal, sleepRaw, training, focusRaw, hydrationVal, meditationVal));
+    onConfirm(buildDailyScore(todoistVal, sleepRaw, training, focusRaw, hydrationVal, meditationVal, undefined, fatigued));
   };
 
   const valid = !isNaN(todoistVal) && !isNaN(sleepRaw) && !isNaN(focusRaw) && !isNaN(hydrationVal) && !isNaN(meditationVal);
@@ -80,23 +87,33 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
         </div>
       )}
 
+      {fatigued && (
+        <div style={{ background: '#1a0a0a', borderRadius: 10, padding: 12, marginBottom: 16, borderLeft: '3px solid #FF4444' }}>
+          <span style={{ color: '#FF4444', fontSize: 12, fontWeight: 600 }}>
+            ⚠️ Sleep debt — qualifying pace -6%, race pace -4%
+          </span>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <InputRow label="Todoist tasks completed" suffix="%" value={todoist}
-          onChange={setTodoist} placeholder="0–100" hint="→ Strategy & pit timing" />
+          onChange={setTodoist} placeholder="0–100" hint="→ Strategy & pit timing" emoji={focusEmoji(todoistVal)} />
         <InputRow label="Sleep quality" suffix="/ 10" value={sleep}
           onChange={setSleep} placeholder="0–10" hint="→ Qualifying pace & race pace"
-          bonus={sleepBonus} />
+          bonus={sleepBonus} emoji={sleepEmoji(sleepRaw)} />
         <InputRow label="Focus score" suffix="/ 100" value={focus}
           onChange={setFocus} placeholder="0–100" hint="→ Wet weather & overtaking"
-          bonus={focusBonus} />
+          bonus={focusBonus} emoji={focusEmoji(focusRaw)} />
         <InputRow label="Hydration" suffix="/ 10" value={hydration}
-          onChange={setHydration} placeholder="0–10" hint="💧 → Late-race stamina & tyre management" color="#00AAFF" />
+          onChange={setHydration} placeholder="0–10" hint="💧 → Late-race stamina & tyre management" color="#00AAFF" emoji={hydrationEmoji(hydrationVal)} />
         <InputRow label="Meditation / clarity" suffix="/ 10" value={meditation}
-          onChange={setMeditation} placeholder="0–10" hint="🧘 → Composure, wet weather, pit strategy" color="#AA44FF" />
+          onChange={setMeditation} placeholder="0–10" hint="🧘 → Composure, wet weather, pit strategy" color="#AA44FF" emoji={meditationEmoji(meditationVal)} />
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ flex: 1, marginRight: 12 }}>
-            <div style={{ color: '#FFF', fontSize: 14, fontWeight: 600 }}>Trained today?</div>
+            <div style={{ color: '#FFF', fontSize: 14, fontWeight: 600 }}>
+              Trained today? <span style={{ fontSize: 16 }}>{training ? '💪' : '🛋️'}</span>
+            </div>
             <div style={{ color: '#E0C040', fontSize: 11, marginTop: 2 }}>→ Tyre management & endurance</div>
           </div>
           <Toggle value={training} onChange={setTraining} />
@@ -146,15 +163,17 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
   );
 };
 
-function InputRow({ label, suffix, value, onChange, placeholder, hint, bonus = 0, color = '#E0C040' }: {
+function InputRow({ label, suffix, value, onChange, placeholder, hint, bonus = 0, color = '#E0C040', emoji }: {
   label: string; suffix: string; value: string;
   onChange: (v: string) => void; placeholder: string; hint: string;
-  bonus?: number; color?: string;
+  bonus?: number; color?: string; emoji?: string;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ flex: 1, marginRight: 12 }}>
-        <div style={{ color: '#FFF', fontSize: 14, fontWeight: 600 }}>{label}</div>
+        <div style={{ color: '#FFF', fontSize: 14, fontWeight: 600 }}>
+          {label}{emoji ? <span style={{ fontSize: 16, marginLeft: 6 }}>{emoji}</span> : null}
+        </div>
         <div style={{ color, fontSize: 11, marginTop: 2 }}>{hint}</div>
         {bonus > 0 && <div style={{ color: '#0090FF', fontSize: 10, marginTop: 1 }}>+{bonus} from sponsor</div>}
       </div>

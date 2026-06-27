@@ -13,6 +13,7 @@ import QualifyingScreen from './screens/QualifyingScreen';
 import RaceScreen from './screens/RaceScreen';
 import SprintScreen from './screens/SprintScreen';
 import SeasonEndScreen from './screens/SeasonEndScreen';
+import RaceHistoryScreen from './screens/RaceHistoryScreen';
 
 const TAB_ROUTES = [
   { path: '/home', label: 'Season', icon: '🏠' },
@@ -73,6 +74,7 @@ function AppInner() {
           <Route path="/sprint/:raceIndex" element={<SprintScreen />} />
           <Route path="/sprint-qualifying/:raceIndex" element={<QualifyingScreen sprint />} />
           <Route path="/season-end" element={<SeasonEndScreen />} />
+          <Route path="/history" element={<RaceHistoryScreen />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </div>

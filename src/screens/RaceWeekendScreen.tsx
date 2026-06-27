@@ -1,19 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { getCircuit } from '../data/circuits';
-import { getDriver } from '../data/drivers2025';
+import { getDriver, USER_DRIVER_ID } from '../data/drivers2025';
 import CALENDAR_2025 from '../data/calendar2025';
+import { PaddockNewsFeed } from '../components/PaddockNewsFeed';
+import { Skeleton } from '../components/Skeleton';
 
 export default function RaceWeekendScreen() {
   const { raceIndex: raceIndexStr } = useParams<{ raceIndex: string }>();
   const raceIndex = Number(raceIndexStr);
   const navigate = useNavigate();
-  const { currentSeason, rivalInfo } = useGameStore();
+  const { currentSeason, rivalInfo, playerName } = useGameStore();
+  const [challengesOpen, setChallengesOpen] = useState(false);
   const weekend = currentSeason.weekends[raceIndex];
   const circuit = getCircuit(weekend?.circuitId ?? '');
   const cal = CALENDAR_2025[raceIndex];
-  if (!circuit || !cal || !weekend) return null;
+  if (!circuit || !cal || !weekend) return <Skeleton rows={4} />;
+
+  const userStanding = currentSeason.driverStandings.find((d) => d.driverId === USER_DRIVER_ID);
+  const userPoints = userStanding?.points ?? 0;
+  const accentColor = circuit.weatherRainChance >= 0.4 ? '#0090FF' : '#E0C040';
+  const weeklyChallenges = weekend.weeklyChallenges ?? [];
 
   const {
     practiceResults, qualifyingResult, raceResult, userGridPosition,
@@ -106,7 +114,7 @@ export default function RaceWeekendScreen() {
   });
 
   return (
-    <div style={{ padding: 20, paddingBottom: 40 }}>
+    <div style={{ padding: 20, paddingBottom: 40, borderTop: `3px solid ${accentColor}` }}>
       <button onClick={() => navigate(-1)} style={{
         background: 'none', border: 'none', color: '#E0C040', fontSize: 14,
         cursor: 'pointer', marginBottom: 16, padding: 0,
@@ -124,6 +132,50 @@ export default function RaceWeekendScreen() {
           )}
         </div>
       </div>
+
+      {/* Paddock news feed */}
+      <PaddockNewsFeed
+        circuitId={circuit.id}
+        raceIndex={raceIndex}
+        userPoints={userPoints}
+        rivalName={rivalDriver?.name ?? null}
+        weather={circuit.weatherRainChance}
+        playerName={playerName}
+      />
+
+      {/* Weekly challenges */}
+      {weeklyChallenges.length > 0 && (
+        <div style={{ background: '#111120', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+          <button
+            onClick={() => setChallengesOpen((o) => !o)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 14,
+            }}
+          >
+            <span style={{ color: '#E0C040', fontSize: 10, letterSpacing: 2, fontWeight: 'bold' }}>
+              🎯 WEEKLY CHALLENGES ({weeklyChallenges.filter((c) => c.completed).length}/{weeklyChallenges.length})
+            </span>
+            <span style={{ color: '#888', fontSize: 16 }}>{challengesOpen ? '−' : '+'}</span>
+          </button>
+          {challengesOpen && (
+            <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {weeklyChallenges.map((c) => (
+                <div key={c.id} style={{
+                  background: c.completed ? '#0d1a0d' : '#1a1a2a', borderRadius: 8, padding: 10,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  <span style={{ fontSize: 18 }}>{c.completed ? '✅' : '⬜'}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: c.completed ? '#39B54A' : '#FFF', fontSize: 13, fontWeight: 600 }}>{c.description}</div>
+                    <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>{c.reward}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Weather forecast */}
       <div style={{ background: '#111120', borderRadius: 12, padding: 14, marginBottom: 16 }}>

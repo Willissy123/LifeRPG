@@ -9,6 +9,7 @@ import { getDriver } from '../data/drivers2025';
 import { getTeam } from '../data/teams2025';
 import { simulateQualifying } from '../engine/QualifyingEngine';
 import { formatLapTime } from '../engine/utils';
+import { GridVisualization } from '../components/GridVisualization';
 
 type Phase = 'score_entry' | 'simulating' | 'results';
 
@@ -23,10 +24,12 @@ export default function QualifyingScreen({ sprint = false }: Props) {
   const [phase, setPhase] = useState<Phase>('score_entry');
   const [results, setResults] = useState<QualifyingResult[] | null>(null);
 
-  const { completeQualifying, completeSprintQualifying, currentSeason, sponsorDeals } = useGameStore();
+  const { completeQualifying, completeSprintQualifying, currentSeason, sponsorDeals, sleepHistory } = useGameStore();
   const weekend = currentSeason.weekends[raceIndex];
   const circuit = getCircuit(weekend?.circuitId ?? '');
   if (!circuit || !weekend) return null;
+
+  const isFatigued = sleepHistory.slice(-3).filter((s) => s < 6.5).length >= 3;
 
   const focusSponsor = sponsorDeals.find((s) => s.bonusType === 'focus_boost' && s.active);
   const sleepSponsor = sponsorDeals.find((s) => s.bonusType === 'sleep_boost' && s.active);
@@ -44,7 +47,7 @@ export default function QualifyingScreen({ sprint = false }: Props) {
       if (sprint) {
         completeSprintQualifying(raceIndex, sim);
       } else {
-        completeQualifying(raceIndex, sim);
+        completeQualifying(raceIndex, sim, score);
       }
       setResults(sim);
       setPhase('results');
@@ -63,6 +66,7 @@ export default function QualifyingScreen({ sprint = false }: Props) {
         initialMeditation={7}
         focusBonus={focusSponsor?.bonusValue}
         sleepBonus={sleepSponsor?.bonusValue}
+        fatigued={isFatigued}
       />
     );
   }
@@ -115,11 +119,16 @@ export default function QualifyingScreen({ sprint = false }: Props) {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
+        {results && results.length > 0 && (
+          <div style={{ padding: '16px 16px 0' }}>
+            <GridVisualization results={results} />
+          </div>
+        )}
         {sprint ? (
           <QSection title="SPRINT GRID" items={results ?? []} color="#FF8800" />
         ) : (
           <>
-            <QSection title="Q3 — TOP 10" items={q3Results} color="#FFFFFF" />
+            <QSection title="Q3 — TOP 10" items={q3Results} color="#FFFFFF" sectorBoundaries={circuit.sectorBoundaries} showSectors />
             <QSection title="Q2 ELIMINATED" items={q2Results} color="#FF8800" />
             <QSection title="Q1 ELIMINATED" items={q1Results} color="#FF4444" />
           </>
@@ -139,8 +148,31 @@ export default function QualifyingScreen({ sprint = false }: Props) {
   );
 }
 
-function QSection({ title, items, color }: { title: string; items: QualifyingResult[] | undefined; color: string }) {
+function splitSectors(time: number, boundaries: [number, number]): [number, number, number] {
+  const s1 = time * boundaries[0];
+  const s2 = time * (boundaries[1] - boundaries[0]);
+  const s3 = time - s1 - s2;
+  return [s1, s2, s3];
+}
+
+function QSection({ title, items, color, sectorBoundaries, showSectors }: {
+  title: string; items: QualifyingResult[] | undefined; color: string;
+  sectorBoundaries?: [number, number]; showSectors?: boolean;
+}) {
   if (!items?.length) return null;
+
+  // Fastest sector across the field for purple highlighting
+  let fastest: [number, number, number] | null = null;
+  if (showSectors && sectorBoundaries) {
+    items.forEach((r) => {
+      const t = r.q3Time ?? r.q2Time ?? r.q1Time;
+      if (!t) return;
+      const sec = splitSectors(t, sectorBoundaries);
+      if (!fastest) fastest = sec;
+      else fastest = [Math.min(fastest[0], sec[0]), Math.min(fastest[1], sec[1]), Math.min(fastest[2], sec[2])];
+    });
+  }
+
   return (
     <div style={{ padding: '16px 16px 0' }}>
       <div style={{ color, fontSize: 11, fontWeight: 'bold', letterSpacing: 2, marginBottom: 8 }}>{title}</div>
@@ -149,23 +181,41 @@ function QSection({ title, items, color }: { title: string; items: QualifyingRes
         const team = driver ? getTeam(driver.teamId) : null;
         const isUser = driver?.isUser ?? false;
         const bestTime = r.q3Time ?? r.q2Time ?? r.q1Time;
+        const sectors = showSectors && sectorBoundaries && bestTime ? splitSectors(bestTime, sectorBoundaries) : null;
         return (
           <div key={r.driverId} style={{
-            display: 'flex', alignItems: 'center',
             padding: '9px 0', borderBottom: '1px solid #111',
             background: isUser ? '#1a1a08' : 'transparent',
           }}>
-            <span style={{ color: isUser ? '#E0C040' : '#888', width: 36, fontSize: 13 }}>P{r.gridPosition}</span>
-            <div style={{ width: 3, height: 26, borderRadius: 1.5, background: team?.color ?? '#888', margin: '0 8px', flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ color: isUser ? '#E0C040' : '#FFF', fontWeight: 600, fontSize: 13 }}>
-                {driver?.shortName ?? '?'}{isUser ? ' (YOU)' : ''}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ color: isUser ? '#E0C040' : '#888', width: 36, fontSize: 13 }}>P{r.gridPosition}</span>
+              <div style={{ width: 3, height: 26, borderRadius: 1.5, background: team?.color ?? '#888', margin: '0 8px', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ color: isUser ? '#E0C040' : '#FFF', fontWeight: 600, fontSize: 13 }}>
+                  {driver?.shortName ?? '?'}{isUser ? ' (YOU)' : ''}
+                </div>
+                <div style={{ color: team?.color ?? '#888', fontSize: 10, marginTop: 1 }}>{team?.shortName}</div>
               </div>
-              <div style={{ color: team?.color ?? '#888', fontSize: 10, marginTop: 1 }}>{team?.shortName}</div>
+              <span style={{ color: isUser ? '#E0C040' : '#CCC', fontSize: 13, fontVariant: 'tabular-nums' }}>
+                {bestTime ? formatLapTime(bestTime) : '---'}
+              </span>
             </div>
-            <span style={{ color: isUser ? '#E0C040' : '#CCC', fontSize: 13, fontVariant: 'tabular-nums' }}>
-              {bestTime ? formatLapTime(bestTime) : '---'}
-            </span>
+            {sectors && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 4, marginLeft: 47 }}>
+                {sectors.map((s, i) => {
+                  const isPurple = fastest != null && Math.abs(s - fastest[i]) < 0.001;
+                  return (
+                    <span key={i} style={{
+                      fontSize: 9, fontVariant: 'tabular-nums',
+                      color: isPurple ? '#CC00FF' : isUser ? '#E0C040' : '#888',
+                      fontWeight: isPurple ? 'bold' : 'normal',
+                    }}>
+                      S{i + 1} {s.toFixed(1)}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}

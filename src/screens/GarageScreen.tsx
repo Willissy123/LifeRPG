@@ -3,6 +3,8 @@ import { useGameStore } from '../store/gameStore';
 import { getTeam } from '../data/teams2025';
 import { USER_TEAM_ID } from '../data/drivers2025';
 import { UPGRADE_COSTS, UpgradeArea, CarDevelopment } from '../types';
+import { RadarChart } from '../components/RadarChart';
+import { CarDiagram } from '../components/CarDiagram';
 
 const UPGRADE_META: Record<UpgradeArea, { label: string; description: string; icon: string; color: string }> = {
   aero:        { label: 'Aerodynamics',   description: '-0.18% lap time per level. Downforce and drag reduction.', icon: '🌬', color: '#0090FF' },
@@ -54,7 +56,20 @@ export default function GarageScreen() {
   const [pendingUpgrade, setPendingUpgrade] = useState<UpgradeArea | null>(null);
   const [tab, setTab] = useState<Tab>('upgrades');
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [selectedPart, setSelectedPart] = useState<UpgradeArea | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const upgradeRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const handleSelectPart = (area: UpgradeArea) => {
+    setSelectedPart(area);
+    const el = upgradeRefs.current[area];
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const radarLevels: Record<UpgradeArea, number> = {
+    aero: carDevelopment.aero, engine: carDevelopment.engine, chassis: carDevelopment.chassis,
+    reliability: carDevelopment.reliability, tyreComp: carDevelopment.tyreComp,
+  };
 
   const handleUpgrade = (area: UpgradeArea) => {
     const current = carDevelopment[area] as number;
@@ -149,6 +164,27 @@ export default function GarageScreen() {
       {/* Development tab */}
       {tab === 'upgrades' && (
         <>
+          {/* Radar + car diagram */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 180, background: '#111120', borderRadius: 14, padding: 16 }}>
+              <div style={{ color: '#888', fontSize: 10, letterSpacing: 2, marginBottom: 8 }}>CAR PROFILE</div>
+              <RadarChart
+                color={teamColor}
+                axes={[
+                  { label: 'AERO', value: radarLevels.aero },
+                  { label: 'ENGINE', value: radarLevels.engine },
+                  { label: 'CHASSIS', value: radarLevels.chassis },
+                  { label: 'RELIAB', value: radarLevels.reliability },
+                  { label: 'TYRE', value: radarLevels.tyreComp },
+                ]}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 150, background: '#111120', borderRadius: 14, padding: 16 }}>
+              <div style={{ color: '#888', fontSize: 10, letterSpacing: 2, marginBottom: 8 }}>TAP A PART</div>
+              <CarDiagram levels={radarLevels} teamColor={teamColor} onSelectPart={handleSelectPart} selected={selectedPart} />
+            </div>
+          </div>
+
           <div style={{ color: '#555', fontSize: 11, lineHeight: 1.6 }}>
             Earn prize money by finishing in the points. Win: $8M · P2: $6M · P10: $1M
           </div>
@@ -159,7 +195,15 @@ export default function GarageScreen() {
             const nextCost = maxed ? null : UPGRADE_COSTS[area][current];
             const canAfford = nextCost !== null && budget >= nextCost;
             return (
-              <div key={area} style={{ background: '#111120', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div
+                key={area}
+                ref={(el) => { upgradeRefs.current[area] = el; }}
+                style={{
+                  background: '#111120', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
+                  border: selectedPart === area ? `1px solid ${meta.color}` : '1px solid transparent',
+                  transition: 'border 0.2s',
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 28 }}>{meta.icon}</span>
                   <div style={{ flex: 1 }}>

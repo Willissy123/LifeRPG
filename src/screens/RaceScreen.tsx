@@ -6,6 +6,9 @@ import { ScoreEntry } from '../components/ScoreEntry';
 import { TrackMap } from '../components/TrackMap';
 import { TimingTower } from '../components/TimingTower';
 import { LapChart } from '../components/LapChart';
+import { RaceStartLights } from '../components/RaceStartLights';
+import { PitStopMiniGame } from '../components/PitStopMiniGame';
+import { PodiumCelebration } from '../components/PodiumCelebration';
 import { useGameStore } from '../store/gameStore';
 import { getCircuit } from '../data/circuits';
 import { getDriver } from '../data/drivers2025';
@@ -15,7 +18,7 @@ import { initRace, tickRace, finaliseRace, buildRaceConditions } from '../engine
 import { getTrackLayout } from '../data/trackLayouts';
 import { positionAlongTrack, formatLapTime } from '../engine/utils';
 
-type Phase = 'strategy' | 'score_entry' | 'racing' | 'finished';
+type Phase = 'strategy' | 'score_entry' | 'lights_out' | 'racing' | 'celebration' | 'finished';
 const SPEED_OPTIONS = [30, 60, 120, 300] as const;
 const SPEED_LABELS: Record<number, string> = { 30: '½×', 60: '1×', 120: '2×', 300: '5×' };
 
@@ -25,6 +28,30 @@ const COMPOUND_COLORS: Record<TyreCompound, string> = {
 const COMPOUND_NAMES: Record<TyreCompound, string> = {
   S: 'Soft', M: 'Medium', H: 'Hard', W: 'Wet', I: 'Inter',
 };
+
+function tyreHealthColor(h: number): string {
+  if (h > 70) return '#39B54A';
+  if (h > 40) return '#E0C040';
+  if (h > 20) return '#FF8800';
+  return '#FF4444';
+}
+
+// Animated points counter
+function useCountUp(target: number, durationMs = 1200): number {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / durationMs, 1);
+      setVal(Math.round(target * t));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, durationMs]);
+  return val;
+}
 
 export default function RaceScreen() {
   const { raceIndex: raceIndexStr } = useParams<{ raceIndex: string }>();
@@ -40,12 +67,16 @@ export default function RaceScreen() {
   const [engineerPrompt, setEngineerPrompt] = useState<{ message: string; lap: number } | null>(null);
   const [pitPromptShown, setPitPromptShown] = useState(false);
   const [startGrid, setStartGrid] = useState(20);
+  const [startGridPenalty, setStartGridPenalty] = useState(0);
+  const [showPitMiniGame, setShowPitMiniGame] = useState(false);
+  const [pitTimeBonus, setPitTimeBonus] = useState(0);
 
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ w: 400, h: 300 });
+  const gapHistoryRef = useRef<number[]>([]);
 
-  const { currentSeason, completeRace, setStrategyChoice: storeStrategyChoice, engineer, sponsorDeals } = useGameStore();
+  const { currentSeason, completeRace, setStrategyChoice: storeStrategyChoice, engineer, sponsorDeals, sleepHistory, rivalInfo } = useGameStore();
   const weekend = currentSeason.weekends[raceIndex];
   const circuit = getCircuit(weekend?.circuitId ?? '');
   if (!circuit || !weekend) return null;
@@ -55,6 +86,9 @@ export default function RaceScreen() {
   const sleepSponsor = sponsorDeals.find((s) => s.bonusType === 'sleep_boost' && s.active);
   const focusBonus = focusSponsor?.bonusValue ?? 0;
   const sleepBonus = sleepSponsor?.bonusValue ?? 0;
+
+  // Sleep-debt fatigue
+  const isFatigued = sleepHistory.slice(-3).filter((s) => s < 6.5).length >= 3;
 
   useEffect(() => {
     const update = () => {
@@ -79,9 +113,14 @@ export default function RaceScreen() {
     stopTick();
     const results = finaliseRace(state, circuit!, currentSeason.carDevelopment);
     const isWet = state.conditions.weather !== 'dry';
-    completeRace(raceIndex, results, grid, isWet);
+    completeRace(raceIndex, results, grid, isWet, score);
     setFinalResults(results);
-    setPhase('finished');
+    const userResult = results.find((r) => r.driverId === USER_DRIVER_ID);
+    if (userResult && !userResult.dnfLap && userResult.position <= 3) {
+      setPhase('celebration');
+    } else {
+      setPhase('finished');
+    }
   }, [circuit, currentSeason.carDevelopment, raceIndex, completeRace, stopTick]);
 
   const startTick = useCallback((state: RaceState, speed: number, score: DailyScore, grid: number) => {
@@ -103,6 +142,11 @@ export default function RaceScreen() {
         }));
 
         const updated = { ...next, cars: updatedCars };
+        // Track gap-to-leader sparkline for user car
+        const uc = updated.cars.find((c) => c.driverId === USER_DRIVER_ID);
+        if (uc) {
+          gapHistoryRef.current = [...gapHistoryRef.current, uc.gapToLeader].slice(-5);
+        }
         if (updated.status === 'finished') {
           setTimeout(() => finishRace(updated, score, grid), 50);
         }
@@ -129,6 +173,24 @@ export default function RaceScreen() {
     }
   }, [raceState, pitPromptShown, phase, stopTick]);
 
+  const executePit = (bonus: number) => {
+    setRaceState((prev) => {
+      if (!prev) return prev;
+      const cars = prev.cars.map((c) =>
+        c.driverId === USER_DRIVER_ID && !c.inPitLane
+          ? { ...c, inPitLane: true, pitTimer: Math.max(0.5, 2.5 + bonus), pitLap: null, status: 'pitting' as const }
+          : c
+      );
+      return { ...prev, cars, status: 'running' };
+    });
+    if (raceScore) {
+      setRaceState((prev) => {
+        if (prev) startTick(prev, simSpeed, raceScore, startGrid);
+        return prev;
+      });
+    }
+  };
+
   const handleEngineerDecision = (decision: 'pit' | 'stay' | 'delay') => {
     setEngineerPrompt(null);
     if (decision === 'delay') {
@@ -142,6 +204,9 @@ export default function RaceScreen() {
         return { ...prev, cars, status: 'running' };
       });
       setPitPromptShown(false); // allow re-prompt in 4 laps
+      if (raceScore) {
+        setRaceState((prev) => { if (prev) startTick(prev, simSpeed, raceScore, startGrid); return prev; });
+      }
     } else if (decision === 'stay') {
       setRaceState((prev) => {
         if (!prev) return prev;
@@ -150,24 +215,19 @@ export default function RaceScreen() {
         );
         return { ...prev, cars, status: 'running' };
       });
+      if (raceScore) {
+        setRaceState((prev) => { if (prev) startTick(prev, simSpeed, raceScore, startGrid); return prev; });
+      }
     } else {
-      // pit now - trigger immediately
-      setRaceState((prev) => {
-        if (!prev) return prev;
-        const cars = prev.cars.map((c) =>
-          c.driverId === USER_DRIVER_ID && !c.inPitLane
-            ? { ...c, inPitLane: true, pitTimer: 2.5, pitLap: null, status: 'pitting' as const }
-            : c
-        );
-        return { ...prev, cars, status: 'running' };
-      });
+      // Pit now - show mini-game first
+      setShowPitMiniGame(true);
     }
-    if (raceScore) {
-      setRaceState((prev) => {
-        if (prev) startTick(prev, simSpeed, raceScore, startGrid);
-        return prev;
-      });
-    }
+  };
+
+  const handlePitMiniGameComplete = (bonusSeconds: number) => {
+    setPitTimeBonus(bonusSeconds);
+    setShowPitMiniGame(false);
+    executePit(bonusSeconds);
   };
 
   const handleStrategyConfirm = () => {
@@ -177,16 +237,36 @@ export default function RaceScreen() {
 
   const handleScoreConfirm = (score: DailyScore) => {
     setRaceScore(score);
-    const gridOrder = weekend.qualifyingResult
+    setPhase('lights_out');
+  };
+
+  const beginRacing = (penalty: number) => {
+    if (!raceScore) return;
+    const baseGrid = weekend.qualifyingResult
       ? [...weekend.qualifyingResult].sort((a, b) => a.gridPosition - b.gridPosition).map((r) => r.driverId)
       : [USER_DRIVER_ID];
-    const grid = weekend.userGridPosition ?? 20;
+    // Apply start-light penalty to user grid slot
+    let gridOrder = [...baseGrid];
+    const userIdx = gridOrder.indexOf(USER_DRIVER_ID);
+    if (userIdx >= 0 && penalty !== 0) {
+      // penalty positive = gain positions = move earlier; negative = lose = move later
+      const targetIdx = Math.min(Math.max(userIdx - penalty, 0), gridOrder.length - 1);
+      gridOrder.splice(userIdx, 1);
+      gridOrder.splice(targetIdx, 0, USER_DRIVER_ID);
+    }
+    const grid = (gridOrder.indexOf(USER_DRIVER_ID) + 1) || (weekend.userGridPosition ?? 20);
     setStartGrid(grid);
     const conditions = buildRaceConditions(circuit!);
-    const initial = initRace(circuit!, gridOrder, conditions, score, weekend.prepBonus, currentSeason.carDevelopment, strategyChoice);
+    const initial = initRace(circuit!, gridOrder, conditions, raceScore, weekend.prepBonus, currentSeason.carDevelopment, strategyChoice);
     setRaceState(initial);
+    gapHistoryRef.current = [];
     setPhase('racing');
-    setTimeout(() => startTick({ ...initial, status: 'running' }, simSpeed, score, grid), 100);
+    setTimeout(() => startTick({ ...initial, status: 'running' }, simSpeed, raceScore, grid), 100);
+  };
+
+  const handleStartResult = (penalty: number) => {
+    setStartGridPenalty(penalty);
+    beginRacing(penalty);
   };
 
   const handleSpeedChange = () => {
@@ -296,122 +376,42 @@ export default function RaceScreen() {
         initialMeditation={6}
         focusBonus={focusBonus}
         sleepBonus={sleepBonus}
+        fatigued={isFatigued}
+      />
+    );
+  }
+
+  // ---- Lights out mini-game ----
+  if (phase === 'lights_out') {
+    return <RaceStartLights onResult={handleStartResult} />;
+  }
+
+  // ---- Podium celebration ----
+  if (phase === 'celebration' && finalResults) {
+    const userResult = finalResults.find((r) => r.driverId === USER_DRIVER_ID);
+    const userDriver = getDriver(USER_DRIVER_ID);
+    const userTeam = userDriver ? getTeam(userDriver.teamId) : null;
+    return (
+      <PodiumCelebration
+        position={userResult?.position ?? 3}
+        driverName={userDriver?.name ?? 'You'}
+        teamColor={userTeam?.color}
+        onDismiss={() => setPhase('finished')}
       />
     );
   }
 
   // Finished screen
   if (phase === 'finished' && finalResults) {
-    const userResult = finalResults.find((r) => r.driverId === USER_DRIVER_ID);
-    return (
-      <div style={{ padding: 20, paddingBottom: 60, background: '#0a0a0f', minHeight: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-          <span style={{ fontSize: 44 }}>{circuit.flag}</span>
-          <div>
-            <div style={{ color: '#888', fontSize: 11, letterSpacing: 2 }}>RACE RESULT</div>
-            <div style={{ color: '#FFF', fontSize: 20, fontWeight: 'bold' }}>{circuit.name}</div>
-          </div>
-        </div>
-
-        {/* Your result hero card */}
-        <div style={{ background: '#1a1a08', borderRadius: 16, padding: 24, textAlign: 'center', marginBottom: 20 }}>
-          <div style={{ color: '#E0C040', fontSize: 56, fontWeight: 'bold', lineHeight: 1 }}>
-            {userResult?.dnfLap ? 'DNF' : `P${userResult?.position}`}
-          </div>
-          <div style={{ color: '#FFF', fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>
-            +{userResult?.points ?? 0} pts
-          </div>
-          {userResult?.fastestLap && (
-            <div style={{ color: '#CC00FF', fontWeight: 'bold', fontSize: 13, marginTop: 8 }}>💜 FASTEST LAP BONUS</div>
-          )}
-          {userResult?.bestLapTime ? (
-            <div style={{ color: '#888', fontSize: 13, marginTop: 6, fontVariant: 'tabular-nums' }}>
-              Best lap: {formatLapTime(userResult.bestLapTime)}
-            </div>
-          ) : null}
-          {userResult?.pitStops?.length > 0 && (
-            <div style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
-              {userResult.pitStops.length} pit stop{userResult.pitStops.length > 1 ? 's' : ''}
-              {' · '}Started {strategyChoice.startingCompound} → {userResult.pitStops.map((p) => p.toCompound).join(' → ')}
-            </div>
-          )}
-          {userResult?.prizeMoneyM > 0 && (
-            <div style={{ color: '#39B54A', fontWeight: 600, fontSize: 13, marginTop: 8 }}>
-              💰 +${(userResult.prizeMoneyM * currentSeason.carDevelopment.prizeMultiplier).toFixed(1)}M prize
-            </div>
-          )}
-          {userResult?.dnfLap && (
-            <div style={{ color: '#FF4444', fontSize: 13, marginTop: 8 }}>
-              Retired on lap {userResult.dnfLap}
-            </div>
-          )}
-        </div>
-
-        {/* Lap Chart */}
-        <div style={{ background: '#111120', borderRadius: 14, padding: 16, marginBottom: 20, overflowX: 'auto' }}>
-          <LapChart results={finalResults} totalLaps={circuit.laps} width={Math.min(320, window.innerWidth - 72)} />
-        </div>
-
-        {/* Podium */}
-        <div style={{ color: '#888', fontSize: 10, letterSpacing: 2, marginBottom: 10 }}>PODIUM</div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {finalResults.filter((r) => !r.dnfLap).slice(0, 3).map((r, i) => {
-            const d = getDriver(r.driverId);
-            const t = d ? getTeam(d.teamId) : null;
-            return (
-              <div key={r.driverId} style={{
-                flex: 1, background: i === 0 ? '#1a1a08' : '#111120',
-                borderRadius: 10, padding: 12, textAlign: 'center',
-                border: d?.isUser ? `1px solid #E0C040` : 'none',
-              }}>
-                <div style={{ color: '#E0C040', fontSize: 20, fontWeight: 'bold' }}>{i + 1}</div>
-                <div style={{ width: 20, height: 3, borderRadius: 1.5, background: t?.color ?? '#888', margin: '6px auto' }} />
-                <div style={{ color: '#FFF', fontWeight: 600, fontSize: 12 }}>{d?.shortName ?? '?'}</div>
-                <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>{r.points}pts</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Full results */}
-        <div style={{ color: '#888', fontSize: 10, letterSpacing: 2, marginBottom: 8 }}>FULL RESULTS</div>
-        <div style={{ background: '#111120', borderRadius: 12, overflow: 'hidden', marginBottom: 24 }}>
-          {finalResults.slice(0, 10).map((r) => {
-            const d = getDriver(r.driverId);
-            const t = d ? getTeam(d.teamId) : null;
-            return (
-              <div key={r.driverId} style={{
-                display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 10,
-                background: d?.isUser ? '#1a1a08' : 'transparent',
-                borderBottom: '1px solid #1a1a2a',
-              }}>
-                <span style={{ color: d?.isUser ? '#E0C040' : '#888', width: 24, fontWeight: 'bold', fontSize: 13 }}>
-                  {r.dnfLap ? 'DNF' : r.position}
-                </span>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: t?.color ?? '#888' }} />
-                <span style={{ flex: 1, color: d?.isUser ? '#E0C040' : '#FFF', fontSize: 13, fontWeight: d?.isUser ? 'bold' : 'normal' }}>
-                  {d?.shortName ?? r.driverId}
-                </span>
-                <span style={{ color: '#888', fontSize: 12 }}>{r.gap || 'LEADER'}</span>
-                <span style={{ color: '#E0C040', fontWeight: 'bold', fontSize: 12, width: 32, textAlign: 'right' }}>
-                  {r.points > 0 ? `+${r.points}` : ''}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={() => navigate('/home')}
-          style={{
-            background: '#E0C040', borderRadius: 12, padding: 18, width: '100%',
-            border: 'none', color: '#000', fontWeight: 'bold', fontSize: 16, cursor: 'pointer',
-          }}
-        >
-          Back to Season
-        </button>
-      </div>
-    );
+    return <FinishedScreen
+      finalResults={finalResults}
+      circuit={circuit}
+      strategyChoice={strategyChoice}
+      prizeMultiplier={currentSeason.carDevelopment.prizeMultiplier}
+      startGridPenalty={startGridPenalty}
+      rivalReaction={rivalInfo?.lastReactionRace === raceIndex ? rivalInfo?.lastReaction ?? null : null}
+      onBack={() => navigate('/home')}
+    />;
   }
 
   // Racing screen
@@ -420,10 +420,16 @@ export default function RaceScreen() {
   const isPaused = raceState.status === 'paused';
   const recentEvents = raceState.events.slice(-5).reverse();
 
+  const inBattle = !!userCar && userCar.gapToCarAhead > 0 && userCar.gapToCarAhead < 1.0 && userCar.status === 'racing';
+  const sector = userCar ? (userCar.lapProgress < 0.33 ? 1 : userCar.lapProgress < 0.66 ? 2 : 3) : 1;
+
   return (
-    <div ref={containerRef} style={{ background: '#0a0a0f', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div ref={containerRef} style={{ background: '#0a0a0f', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      {/* Pit mini-game overlay */}
+      {showPitMiniGame && <PitStopMiniGame onComplete={handlePitMiniGameComplete} />}
+
       {/* Engineer "Box now?" prompt */}
-      {engineerPrompt && (
+      {engineerPrompt && !showPitMiniGame && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.85)', zIndex: 50,
@@ -475,14 +481,47 @@ export default function RaceScreen() {
             <span style={{ color: '#AAA', fontSize: 13 }}>
               {userCar.position === 1 ? 'LEAD' : `+${userCar.gapToLeader.toFixed(1)}s`}
             </span>
-            <span style={{
-              background: COMPOUND_COLORS[userCar.tyreCompound], color: '#000',
-              fontWeight: 'bold', fontSize: 11, borderRadius: 4, padding: '2px 5px',
-            }}>
-              {userCar.tyreCompound} {userCar.tyreAgeLaps}L
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <span style={{
+                background: COMPOUND_COLORS[userCar.tyreCompound], color: '#000',
+                fontWeight: 'bold', fontSize: 11, borderRadius: 4, padding: '2px 5px',
+              }}>
+                {userCar.tyreCompound} {userCar.tyreAgeLaps}L
+              </span>
+              {/* Tyre health bar */}
+              <div style={{ width: 40, height: 3, background: '#222', borderRadius: 2 }}>
+                <div style={{
+                  width: `${userCar.tyreHealth}%`, height: '100%',
+                  background: tyreHealthColor(userCar.tyreHealth), borderRadius: 2,
+                  animation: userCar.tyreHealth <= 20 ? 'tyrePulse 0.7s infinite' : undefined,
+                }} />
+              </div>
+            </div>
+            {/* Gap sparkline */}
+            <GapSparkline gaps={gapHistoryRef.current} />
+            {/* Sector indicator */}
+            <div style={{ display: 'flex', gap: 2 }}>
+              {[1, 2, 3].map((s) => (
+                <span key={s} style={{
+                  fontSize: 9, fontWeight: 'bold', padding: '1px 3px', borderRadius: 2,
+                  color: sector === s ? '#000' : '#666',
+                  background: sector === s ? '#E0C040' : '#1a1a2a',
+                }}>S{s}</span>
+              ))}
+            </div>
           </div>
         )}
+
+        {/* Battle badge */}
+        {inBattle && (
+          <div style={{
+            position: 'absolute', top: 8, right: 8,
+            background: '#FF8800', borderRadius: 6, padding: '3px 8px',
+            animation: 'battlePulse 0.8s ease-in-out infinite',
+            fontWeight: 'bold', fontSize: 11, color: '#FFF',
+          }}>⚔️ BATTLE</div>
+        )}
+
         <div style={{ position: 'absolute', bottom: 8, right: 8, display: 'flex', gap: 8 }}>
           <button onClick={handlePause} style={{
             background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '8px 14px',
@@ -529,8 +568,163 @@ export default function RaceScreen() {
           currentLap={raceState.currentSimLap}
           totalLaps={raceState.totalLaps}
           fastestLapHolder={raceState.fastestLapHolder}
+          raceFinished={false}
         />
       </div>
+    </div>
+  );
+}
+
+function GapSparkline({ gaps }: { gaps: number[] }) {
+  if (gaps.length === 0) return null;
+  const max = Math.max(...gaps, 0.1);
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, width: 40, height: 16 }}>
+      {gaps.map((g, i) => (
+        <div key={i} style={{
+          flex: 1, height: `${Math.max(2, (g / max) * 16)}px`,
+          background: '#0090FF', borderRadius: 1, opacity: 0.4 + (i / gaps.length) * 0.6,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+interface FinishedScreenProps {
+  finalResults: FinishedRaceResult[];
+  circuit: NonNullable<ReturnType<typeof getCircuit>>;
+  strategyChoice: StrategyChoice;
+  prizeMultiplier: number;
+  startGridPenalty: number;
+  rivalReaction: string | null;
+  onBack: () => void;
+}
+
+function FinishedScreen({ finalResults, circuit, strategyChoice, prizeMultiplier, startGridPenalty, rivalReaction, onBack }: FinishedScreenProps) {
+  const userResult = finalResults.find((r) => r.driverId === USER_DRIVER_ID);
+  const points = useCountUp(userResult?.points ?? 0);
+  const pitStops = userResult?.pitStops ?? [];
+
+  return (
+    <div style={{ padding: 20, paddingBottom: 60, background: '#0a0a0f', minHeight: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+        <span style={{ fontSize: 44 }}>{circuit.flag}</span>
+        <div>
+          <div style={{ color: '#888', fontSize: 11, letterSpacing: 2 }}>RACE RESULT</div>
+          <div style={{ color: '#FFF', fontSize: 20, fontWeight: 'bold' }}>{circuit.name}</div>
+        </div>
+      </div>
+
+      {/* Your result hero card */}
+      <div style={{ background: '#1a1a08', borderRadius: 16, padding: 24, textAlign: 'center', marginBottom: 20, animation: 'fadeSlideIn 0.3s ease-out' }}>
+        <div style={{ color: '#E0C040', fontSize: 56, fontWeight: 'bold', lineHeight: 1 }}>
+          {userResult?.dnfLap ? 'DNF' : `P${userResult?.position}`}
+        </div>
+        <div style={{ color: '#FFF', fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>
+          +{points} pts
+        </div>
+        {startGridPenalty !== 0 && (
+          <div style={{ color: startGridPenalty > 0 ? '#39B54A' : '#FF4444', fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+            Start: {startGridPenalty > 0 ? `+${startGridPenalty} launch` : `${startGridPenalty} launch`}
+          </div>
+        )}
+        {userResult?.fastestLap && (
+          <div style={{ color: '#CC00FF', fontWeight: 'bold', fontSize: 13, marginTop: 8 }}>💜 FASTEST LAP BONUS</div>
+        )}
+        {userResult?.bestLapTime ? (
+          <div style={{ color: '#888', fontSize: 13, marginTop: 6, fontVariant: 'tabular-nums' }}>
+            Best lap: {formatLapTime(userResult.bestLapTime)}
+          </div>
+        ) : null}
+        {pitStops.length > 0 && (
+          <div style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
+            {pitStops.length} pit stop{pitStops.length > 1 ? 's' : ''}
+            {' · '}Started {strategyChoice.startingCompound} → {pitStops.map((p) => p.toCompound).join(' → ')}
+          </div>
+        )}
+        {(userResult?.prizeMoneyM ?? 0) > 0 && (
+          <div style={{ color: '#39B54A', fontWeight: 600, fontSize: 13, marginTop: 8 }}>
+            💰 +${((userResult?.prizeMoneyM ?? 0) * prizeMultiplier).toFixed(1)}M prize
+          </div>
+        )}
+        {userResult?.dnfLap && (
+          <div style={{ color: '#FF4444', fontSize: 13, marginTop: 8 }}>
+            Retired on lap {userResult.dnfLap}
+          </div>
+        )}
+      </div>
+
+      {/* Rival reaction quote */}
+      {rivalReaction && (
+        <div style={{ background: '#1a0a0a', borderRadius: 12, padding: 14, marginBottom: 20, borderLeft: '3px solid #FF4444' }}>
+          <div style={{ color: '#FF4444', fontSize: 10, letterSpacing: 2, fontWeight: 'bold', marginBottom: 6 }}>RIVAL REACTION</div>
+          <div style={{ color: '#CCC', fontSize: 13, fontStyle: 'italic' }}>{rivalReaction}</div>
+        </div>
+      )}
+
+      {/* Lap Chart */}
+      <div style={{ background: '#111120', borderRadius: 14, padding: 16, marginBottom: 20, overflowX: 'auto' }}>
+        <LapChart results={finalResults} totalLaps={circuit.laps} width={Math.min(320, window.innerWidth - 72)} />
+      </div>
+
+      {/* Podium */}
+      <div style={{ color: '#888', fontSize: 10, letterSpacing: 2, marginBottom: 10 }}>PODIUM</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        {finalResults.filter((r) => !r.dnfLap).slice(0, 3).map((r, i) => {
+          const d = getDriver(r.driverId);
+          const t = d ? getTeam(d.teamId) : null;
+          return (
+            <div key={r.driverId} style={{
+              flex: 1, background: i === 0 ? '#1a1a08' : '#111120',
+              borderRadius: 10, padding: 12, textAlign: 'center',
+              border: d?.isUser ? `1px solid #E0C040` : 'none',
+            }}>
+              <div style={{ color: '#E0C040', fontSize: 20, fontWeight: 'bold' }}>{i + 1}</div>
+              <div style={{ width: 20, height: 3, borderRadius: 1.5, background: t?.color ?? '#888', margin: '6px auto' }} />
+              <div style={{ color: '#FFF', fontWeight: 600, fontSize: 12 }}>{d?.shortName ?? '?'}</div>
+              <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>{r.points}pts</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Full results */}
+      <div style={{ color: '#888', fontSize: 10, letterSpacing: 2, marginBottom: 8 }}>FULL RESULTS</div>
+      <div style={{ background: '#111120', borderRadius: 12, overflow: 'hidden', marginBottom: 24 }}>
+        {finalResults.slice(0, 10).map((r) => {
+          const d = getDriver(r.driverId);
+          const t = d ? getTeam(d.teamId) : null;
+          return (
+            <div key={r.driverId} style={{
+              display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 10,
+              background: d?.isUser ? '#1a1a08' : 'transparent',
+              borderBottom: '1px solid #1a1a2a',
+            }}>
+              <span style={{ color: d?.isUser ? '#E0C040' : '#888', width: 24, fontWeight: 'bold', fontSize: 13 }}>
+                {r.dnfLap ? 'DNF' : r.position}
+              </span>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: t?.color ?? '#888' }} />
+              <span style={{ flex: 1, color: d?.isUser ? '#E0C040' : '#FFF', fontSize: 13, fontWeight: d?.isUser ? 'bold' : 'normal' }}>
+                {d?.shortName ?? r.driverId}
+              </span>
+              <span style={{ color: '#888', fontSize: 12 }}>{r.gap || 'LEADER'}</span>
+              <span style={{ color: '#E0C040', fontWeight: 'bold', fontSize: 12, width: 32, textAlign: 'right' }}>
+                {r.points > 0 ? `+${r.points}` : ''}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        onClick={onBack}
+        style={{
+          background: '#E0C040', borderRadius: 12, padding: 18, width: '100%',
+          border: 'none', color: '#000', fontWeight: 'bold', fontSize: 16, cursor: 'pointer',
+        }}
+      >
+        Back to Season
+      </button>
     </div>
   );
 }

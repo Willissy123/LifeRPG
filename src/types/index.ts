@@ -162,6 +162,8 @@ export interface PersonalBests {
   totalPoles: number;
   totalFastestLaps: number;
   hadDnfLastRace: boolean;
+  trainingStreak: number;
+  longestTrainingStreak: number;
 }
 
 export const DEFAULT_PERSONAL_BESTS: PersonalBests = {
@@ -176,6 +178,8 @@ export const DEFAULT_PERSONAL_BESTS: PersonalBests = {
   totalPoles: 0,
   totalFastestLaps: 0,
   hadDnfLastRace: false,
+  trainingStreak: 0,
+  longestTrainingStreak: 0,
 };
 
 // ---- Sponsor Deals ----
@@ -256,6 +260,32 @@ export const DEFAULT_ENGINEER: EngineerProfile = {
 export interface RivalInfo {
   driverId: string;
   gapToRival: number; // points gap (positive = you're ahead)
+  lastReaction: string | null;
+  lastReactionRace: number;
+  h2hWins: number;
+  h2hLosses: number;
+  h2hDraws: number;
+}
+
+// ---- Weekly Challenges ----
+
+export interface WeeklyChallenge {
+  id: string;
+  description: string;
+  target: 'quali_position' | 'race_position' | 'focus_score' | 'sleep_score' | 'points';
+  targetValue: number;
+  reward: string;
+  rewardType: 'budget' | 'prep_bonus' | 'strategy_bonus';
+  rewardValue: number;
+  completed: boolean;
+}
+
+// ---- Team Principal Message ----
+
+export interface TPMessage {
+  message: string;
+  type: 'positive' | 'warning' | 'neutral';
+  raceIndex: number;
 }
 
 // ---- Strategy Choice ----
@@ -385,6 +415,7 @@ export interface RaceWeekend {
   strategyChoice: StrategyChoice | null;
   prepBonus: number;
   strategyBonus: number;
+  weeklyChallenges: WeeklyChallenge[];
   completed: boolean;
 }
 
@@ -412,6 +443,21 @@ export interface DriverStanding {
   fastestLaps: number;
   position: number;
   bestResult: number;
+  previousPosition?: number;
+}
+
+// ---- Career Race History ----
+
+export interface RaceHistoryEntry {
+  raceIndex: number;
+  circuitName: string;
+  circuitFlag: string;
+  season: number;
+  position: number | null; // null = DNF
+  points: number;
+  gridPosition: number;
+  fastestLap: boolean;
+  dnf: boolean;
 }
 
 export interface ConstructorStanding {
@@ -447,6 +493,11 @@ export interface GameState {
   rivalInfo: RivalInfo | null;
   sponsorDeals: SponsorDeal[];
   transferOffer: TeamTransferOffer | null;
+  // New expansion systems
+  sleepHistory: number[]; // last 5 sleep scores
+  raceHistory: RaceHistoryEntry[];
+  tpMessage: TPMessage | null;
+  recentLifeScores: number[]; // last 8 qualifying pace scores
 }
 
 export interface GameSettings {

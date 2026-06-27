@@ -10,10 +10,11 @@ interface TimingTowerProps {
   currentLap: number;
   totalLaps: number;
   fastestLapHolder: string | null;
+  raceFinished?: boolean;
 }
 
 export const TimingTower: React.FC<TimingTowerProps> = ({
-  cars, conditions, currentLap, totalLaps, fastestLapHolder,
+  cars, conditions, currentLap, totalLaps, fastestLapHolder, raceFinished = false,
 }) => {
   const sorted = [...cars].sort((a, b) => {
     if (a.status === 'retired' && b.status !== 'retired') return 1;
@@ -46,6 +47,12 @@ export const TimingTower: React.FC<TimingTowerProps> = ({
           const isUser = driver?.isUser ?? false;
           const isRetired = car.status === 'retired';
           const isFastestLap = fastestLapHolder === car.driverId;
+          // Position change from race start (lap 1)
+          const startPos = car.positionHistory && car.positionHistory.length > 0
+            ? car.positionHistory[0]
+            : car.position;
+          const delta = startPos - car.position; // positive = gained places
+          const showDelta = !raceFinished && !isRetired && delta !== 0;
 
           return (
             <div key={car.driverId} style={{
@@ -56,10 +63,18 @@ export const TimingTower: React.FC<TimingTowerProps> = ({
               opacity: isRetired ? 0.45 : 1,
             }}>
               {/* Position */}
-              <div style={{ width: 28, textAlign: 'center' }}>
+              <div style={{ width: 28, textAlign: 'center', position: 'relative' }}>
                 <span style={{ color: isRetired ? '#666' : '#FFF', fontWeight: 'bold', fontSize: 13 }}>
                   {isRetired ? 'OUT' : car.position}
                 </span>
+                {showDelta && (
+                  <span style={{
+                    display: 'block', fontSize: 8, fontWeight: 'bold', lineHeight: 1,
+                    color: delta > 0 ? '#39B54A' : '#FF4444',
+                  }}>
+                    {delta > 0 ? `▲${delta}` : `▼${Math.abs(delta)}`}
+                  </span>
+                )}
               </div>
 
               {/* Team colour strip */}
