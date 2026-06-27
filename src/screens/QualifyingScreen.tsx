@@ -12,17 +12,24 @@ import { formatLapTime } from '../engine/utils';
 
 type Phase = 'score_entry' | 'simulating' | 'results';
 
-export default function QualifyingScreen() {
+interface Props {
+  sprint?: boolean;
+}
+
+export default function QualifyingScreen({ sprint = false }: Props) {
   const { raceIndex: raceIndexStr } = useParams<{ raceIndex: string }>();
   const raceIndex = Number(raceIndexStr);
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>('score_entry');
   const [results, setResults] = useState<QualifyingResult[] | null>(null);
 
-  const { completeQualifying, currentSeason } = useGameStore();
+  const { completeQualifying, completeSprintQualifying, currentSeason, sponsorDeals } = useGameStore();
   const weekend = currentSeason.weekends[raceIndex];
   const circuit = getCircuit(weekend?.circuitId ?? '');
   if (!circuit || !weekend) return null;
+
+  const focusSponsor = sponsorDeals.find((s) => s.bonusType === 'focus_boost' && s.active);
+  const sleepSponsor = sponsorDeals.find((s) => s.bonusType === 'sleep_boost' && s.active);
 
   const handleScoreConfirm = (score: DailyScore) => {
     setPhase('simulating');
@@ -32,8 +39,13 @@ export default function QualifyingScreen() {
         lifeScore: score.qualifyingPace,
         prepBonus: weekend.prepBonus,
         carDev: currentSeason.carDevelopment,
+        sprintMode: sprint,
       });
-      completeQualifying(raceIndex, sim);
+      if (sprint) {
+        completeSprintQualifying(raceIndex, sim);
+      } else {
+        completeQualifying(raceIndex, sim);
+      }
       setResults(sim);
       setPhase('results');
     }, 1000);
@@ -42,11 +54,15 @@ export default function QualifyingScreen() {
   if (phase === 'score_entry') {
     return (
       <ScoreEntry
-        sessionLabel="Qualifying"
+        sessionLabel={sprint ? 'Sprint Qualifying' : 'Qualifying'}
         onConfirm={handleScoreConfirm}
         onCancel={() => navigate(-1)}
         initialTodoist={70}
         initialSleep={8}
+        initialHydration={7}
+        initialMeditation={7}
+        focusBonus={focusSponsor?.bonusValue}
+        sleepBonus={sleepSponsor?.bonusValue}
       />
     );
   }
@@ -59,11 +75,13 @@ export default function QualifyingScreen() {
       }}>
         <div style={{
           width: 40, height: 40, border: '3px solid #333',
-          borderTopColor: '#E0C040', borderRadius: '50%',
+          borderTopColor: sprint ? '#FF8800' : '#E0C040', borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
         }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <div style={{ color: '#FFF', fontSize: 16, fontWeight: 'bold' }}>Running Q1 → Q2 → Q3...</div>
+        <div style={{ color: '#FFF', fontSize: 16, fontWeight: 'bold' }}>
+          {sprint ? 'Sprint Qualifying — 12 minute session...' : 'Running Q1 → Q2 → Q3...'}
+        </div>
       </div>
     );
   }
@@ -72,16 +90,21 @@ export default function QualifyingScreen() {
   const q3Results = results?.filter((r) => !r.eliminated);
   const q2Results = results?.filter((r) => r.eliminated === 'Q2');
   const q1Results = results?.filter((r) => r.eliminated === 'Q1');
+  const headerColor = sprint ? '#FF8800' : '#E0C040';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0f' }}>
       <div style={{ padding: 20, borderBottom: '1px solid #222', flexShrink: 0 }}>
-        <div style={{ color: '#E0C040', fontSize: 11, letterSpacing: 2, fontWeight: 'bold' }}>QUALIFYING</div>
+        <div style={{ color: headerColor, fontSize: 11, letterSpacing: 2, fontWeight: 'bold' }}>
+          {sprint ? '⚡ SPRINT QUALIFYING' : 'QUALIFYING'}
+        </div>
         <div style={{ color: '#FFF', fontSize: 20, fontWeight: 'bold', marginTop: 4 }}>{circuit.name}</div>
         {userResult && (
-          <div style={{ marginTop: 12, background: '#1a1a08', borderRadius: 8, padding: 14, textAlign: 'center' }}>
-            <div style={{ color: '#888', fontSize: 10, letterSpacing: 2 }}>YOUR GRID POSITION</div>
-            <div style={{ color: '#E0C040', fontSize: 48, fontWeight: 'bold', lineHeight: '52px' }}>
+          <div style={{ marginTop: 12, background: sprint ? '#1a0800' : '#1a1a08', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+            <div style={{ color: '#888', fontSize: 10, letterSpacing: 2 }}>
+              {sprint ? 'SPRINT GRID POSITION' : 'YOUR GRID POSITION'}
+            </div>
+            <div style={{ color: headerColor, fontSize: 48, fontWeight: 'bold', lineHeight: '52px' }}>
               P{userResult.gridPosition}
             </div>
             <div style={{ color: '#FFF', fontSize: 18, fontVariant: 'tabular-nums' }}>
@@ -92,15 +115,21 @@ export default function QualifyingScreen() {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <QSection title="Q3 — TOP 10" items={q3Results} color="#FFFFFF" />
-        <QSection title="Q2 ELIMINATED" items={q2Results} color="#FF8800" />
-        <QSection title="Q1 ELIMINATED" items={q1Results} color="#FF4444" />
+        {sprint ? (
+          <QSection title="SPRINT GRID" items={results ?? []} color="#FF8800" />
+        ) : (
+          <>
+            <QSection title="Q3 — TOP 10" items={q3Results} color="#FFFFFF" />
+            <QSection title="Q2 ELIMINATED" items={q2Results} color="#FF8800" />
+            <QSection title="Q1 ELIMINATED" items={q1Results} color="#FF4444" />
+          </>
+        )}
       </div>
 
       <button
         onClick={() => navigate(-1)}
         style={{
-          margin: 16, background: '#E0C040', borderRadius: 10, padding: 16,
+          margin: 16, background: headerColor, borderRadius: 10, padding: 16,
           border: 'none', color: '#000', fontWeight: 'bold', fontSize: 15, cursor: 'pointer',
         }}
       >

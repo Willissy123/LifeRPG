@@ -1,43 +1,44 @@
-// Each day's score is composed of 4 weighted inputs that drive different car attributes.
+// Each day's score is composed of weighted inputs that drive different car attributes.
 
 export interface DailyScore {
-  todoist: number;   // Todoist task completion % (0-100)
-  sleep: number;     // Sleep quality score (0-10, we scale to 0-100)
-  training: boolean; // Did you train today?
-  focus: number;     // Manual focus score (0-100)
-  date: string;      // ISO date string YYYY-MM-DD
+  todoist: number;    // Todoist task completion % (0-100)
+  sleep: number;      // Sleep quality score (0-10)
+  training: boolean;  // Did you train today?
+  focus: number;      // Manual focus score (0-100)
+  hydration: number;  // Daily water intake (0-10) → late-race stamina
+  meditation: number; // Mindfulness / mental clarity (0-10) → composure + wet weather
+  date: string;       // ISO date string YYYY-MM-DD
 
   // Derived composite scores (computed at entry time)
-  qualifyingPace: number;  // 0-100: how fast you are in qualifying
-  racePace: number;        // 0-100: raw race pace
-  tyreMgmt: number;        // 0-100: tyre conservation ability
-  wetWeather: number;      // 0-100: wet weather / focus / racecraft
-  strategy: number;        // 0-100: pit timing accuracy, decision making
+  qualifyingPace: number;  // 0-100
+  racePace: number;        // 0-100
+  tyreMgmt: number;        // 0-100
+  wetWeather: number;      // 0-100
+  strategy: number;        // 0-100
 }
 
 export function computeDerivedScores(
   todoist: number,
-  sleep: number, // raw 0-10 score, converted to 0-100
+  sleep: number,
   training: boolean,
   focus: number,
+  hydration = 5,
+  meditation = 5,
 ): Pick<DailyScore, 'qualifyingPace' | 'racePace' | 'tyreMgmt' | 'wetWeather' | 'strategy'> {
-  const sleepPct = Math.min(sleep * 10, 100); // 0-10 → 0-100
-  const trainingPct = training ? 100 : 30;     // boolean → 30 baseline if not training
+  const sleepPct      = Math.min(sleep * 10, 100);
+  const trainingPct   = training ? 100 : 30;
+  const hydrationPct  = Math.min(hydration * 10, 100);
+  const meditationPct = Math.min(meditation * 10, 100);
 
-  // Qualifying pace: sleep is king (rested = fast reactions), focus helps, prep (todoist) matters
-  const qualifyingPace = sleepPct * 0.50 + focus * 0.30 + todoist * 0.20;
-
-  // Race pace: balanced across all inputs
-  const racePace = sleepPct * 0.35 + focus * 0.25 + todoist * 0.25 + trainingPct * 0.15;
-
-  // Tyre management: training = physical endurance, sleep = fatigue resistance
-  const tyreMgmt = trainingPct * 0.50 + sleepPct * 0.30 + focus * 0.20;
-
-  // Wet weather: focus = mental sharpness under pressure, sleep + training for stamina
-  const wetWeather = focus * 0.50 + sleepPct * 0.30 + trainingPct * 0.20;
-
-  // Strategy: todoist = task/habit completion maps to pit execution quality, focus helps
-  const strategy = todoist * 0.55 + focus * 0.30 + sleepPct * 0.15;
+  // Meditation boosts qualifying composure and wet-weather focus
+  const qualifyingPace = sleepPct * 0.44 + focus * 0.27 + todoist * 0.17 + meditationPct * 0.12;
+  // Hydration sustains late-race pace (mapped into racePace baseline)
+  const racePace = sleepPct * 0.29 + focus * 0.22 + todoist * 0.21 + trainingPct * 0.14 + hydrationPct * 0.14;
+  // Hydration boosts physical tyre endurance
+  const tyreMgmt = trainingPct * 0.43 + sleepPct * 0.27 + focus * 0.17 + hydrationPct * 0.13;
+  // Meditation improves wet-weather mental sharpness
+  const wetWeather = focus * 0.38 + sleepPct * 0.22 + trainingPct * 0.17 + meditationPct * 0.23;
+  const strategy = todoist * 0.50 + focus * 0.27 + sleepPct * 0.13 + meditationPct * 0.10;
 
   return {
     qualifyingPace: Math.min(Math.round(qualifyingPace), 100),
@@ -53,19 +54,18 @@ export function buildDailyScore(
   sleep: number,
   training: boolean,
   focus: number,
+  hydration = 5,
+  meditation = 5,
   date?: string,
 ): DailyScore {
   return {
-    todoist,
-    sleep,
-    training,
-    focus,
+    todoist, sleep, training, focus, hydration, meditation,
     date: date ?? new Date().toISOString().split('T')[0],
-    ...computeDerivedScores(todoist, sleep, training, focus),
+    ...computeDerivedScores(todoist, sleep, training, focus, hydration, meditation),
   };
 }
 
-// Legacy single score for summary displays (e.g. standings, history chart)
+// Legacy single score for summary displays
 export function overallScore(score: DailyScore): number {
   return Math.round(
     score.qualifyingPace * 0.25 +
@@ -76,4 +76,4 @@ export function overallScore(score: DailyScore): number {
   );
 }
 
-export type SessionScoreKey = 'fp1' | 'fp2' | 'fp3' | 'qualifying' | 'race';
+export type SessionScoreKey = 'fp1' | 'fp2' | 'fp3' | 'qualifying' | 'race' | 'sprint';

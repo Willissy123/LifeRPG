@@ -9,36 +9,51 @@ interface ScoreEntryProps {
   initialSleep?: number;
   initialTraining?: boolean;
   initialFocus?: number;
+  initialHydration?: number;
+  initialMeditation?: number;
+  // Sponsor bonuses applied transparently
+  focusBonus?: number;
+  sleepBonus?: number;
 }
 
 export const ScoreEntry: React.FC<ScoreEntryProps> = ({
   sessionLabel, onConfirm, onCancel,
-  initialTodoist = 50, initialSleep = 7, initialTraining = false, initialFocus = 50,
+  initialTodoist = 50, initialSleep = 7, initialTraining = false,
+  initialFocus = 50, initialHydration = 5, initialMeditation = 5,
+  focusBonus = 0, sleepBonus = 0,
 }) => {
-  const [todoist, setTodoist] = useState(String(initialTodoist));
-  const [sleep, setSleep] = useState(String(initialSleep));
-  const [training, setTraining] = useState(initialTraining);
-  const [focus, setFocus] = useState(String(initialFocus));
+  const [todoist, setTodoist]       = useState(String(initialTodoist));
+  const [sleep, setSleep]           = useState(String(initialSleep));
+  const [training, setTraining]     = useState(initialTraining);
+  const [focus, setFocus]           = useState(String(initialFocus));
+  const [hydration, setHydration]   = useState(String(initialHydration));
+  const [meditation, setMeditation] = useState(String(initialMeditation));
 
-  const todoistVal = Math.min(100, Math.max(0, Number(todoist) || 0));
-  const sleepVal   = Math.min(10, Math.max(0, Number(sleep) || 0));
-  const focusVal   = Math.min(100, Math.max(0, Number(focus) || 0));
+  const todoistVal   = Math.min(100, Math.max(0, Number(todoist) || 0));
+  const sleepRaw     = Math.min(10, Math.max(0, Number(sleep) || 0));
+  const sleepVal     = Math.min(10, sleepRaw + sleepBonus);
+  const focusRaw     = Math.min(100, Math.max(0, Number(focus) || 0));
+  const focusVal     = Math.min(100, focusRaw + focusBonus);
+  const hydrationVal = Math.min(10, Math.max(0, Number(hydration) || 0));
+  const meditationVal = Math.min(10, Math.max(0, Number(meditation) || 0));
 
-  const derived = computeDerivedScores(todoistVal, sleepVal, training, focusVal);
+  const derived = computeDerivedScores(todoistVal, sleepVal, training, focusVal, hydrationVal, meditationVal);
 
   const bars = [
-    { label: 'Qualifying Pace', value: derived.qualifyingPace, color: '#FF2800', desc: 'Raw speed in qualifying (sleep + focus)' },
-    { label: 'Race Pace',       value: derived.racePace,       color: '#FF8800', desc: 'Sustained race performance (all inputs)' },
-    { label: 'Tyre Management', value: derived.tyreMgmt,       color: '#39B54A', desc: 'Tyre conservation (training + sleep)' },
-    { label: 'Wet Weather',     value: derived.wetWeather,     color: '#0067FF', desc: 'Wet conditions skill (focus + training)' },
-    { label: 'Strategy',        value: derived.strategy,       color: '#CC00FF', desc: 'Pit timing precision (Todoist %)' },
+    { label: 'Qualifying Pace', value: derived.qualifyingPace, color: '#FF2800', desc: 'Sleep + meditation + focus → raw speed' },
+    { label: 'Race Pace',       value: derived.racePace,       color: '#FF8800', desc: 'Hydration + sleep + focus → sustained pace' },
+    { label: 'Tyre Management', value: derived.tyreMgmt,       color: '#39B54A', desc: 'Training + hydration → physical endurance' },
+    { label: 'Wet Weather',     value: derived.wetWeather,     color: '#0067FF', desc: 'Meditation + focus → mental sharpness' },
+    { label: 'Strategy',        value: derived.strategy,       color: '#CC00FF', desc: 'Todoist % + meditation → pit decision quality' },
   ];
 
   const handleConfirm = () => {
-    onConfirm(buildDailyScore(todoistVal, sleepVal, training, focusVal));
+    onConfirm(buildDailyScore(todoistVal, sleepRaw, training, focusRaw, hydrationVal, meditationVal));
   };
 
-  const valid = !isNaN(todoistVal) && !isNaN(sleepVal) && !isNaN(focusVal);
+  const valid = !isNaN(todoistVal) && !isNaN(sleepRaw) && !isNaN(focusRaw) && !isNaN(hydrationVal) && !isNaN(meditationVal);
+
+  const isPerfect = hydrationVal === 10 && meditationVal === 10 && sleepRaw >= 9 && focusRaw >= 90 && todoistVal === 100;
 
   return (
     <div style={{ background: '#0a0a0f', minHeight: '100%', padding: 20, paddingBottom: 40 }}>
@@ -49,26 +64,45 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
         Your life performance drives your car for this session
       </p>
 
-      {/* Inputs */}
+      {isPerfect && (
+        <div style={{ background: '#1a1a08', borderRadius: 10, padding: 12, marginBottom: 20, textAlign: 'center' }}>
+          <span style={{ color: '#E0C040', fontWeight: 'bold', fontSize: 13 }}>💯 Perfect Day — Max performance unlocked!</span>
+        </div>
+      )}
+
+      {(focusBonus > 0 || sleepBonus > 0) && (
+        <div style={{ background: '#0a1520', borderRadius: 10, padding: 10, marginBottom: 16 }}>
+          <span style={{ color: '#0090FF', fontSize: 12 }}>
+            🏷 Sponsor bonus active:
+            {focusBonus > 0 && ` +${focusBonus} Focus`}
+            {sleepBonus > 0 && ` +${sleepBonus} Sleep`}
+          </span>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <InputRow label="Todoist tasks completed" suffix="%" value={todoist}
-          onChange={setTodoist} placeholder="0–100" hint="Maps to → Strategy & pit timing" />
+          onChange={setTodoist} placeholder="0–100" hint="→ Strategy & pit timing" />
         <InputRow label="Sleep quality" suffix="/ 10" value={sleep}
-          onChange={setSleep} placeholder="0–10" hint="Maps to → Qualifying pace & race pace" />
+          onChange={setSleep} placeholder="0–10" hint="→ Qualifying pace & race pace"
+          bonus={sleepBonus} />
         <InputRow label="Focus score" suffix="/ 100" value={focus}
-          onChange={setFocus} placeholder="0–100" hint="Maps to → Wet weather & overtaking" />
+          onChange={setFocus} placeholder="0–100" hint="→ Wet weather & overtaking"
+          bonus={focusBonus} />
+        <InputRow label="Hydration" suffix="/ 10" value={hydration}
+          onChange={setHydration} placeholder="0–10" hint="💧 → Late-race stamina & tyre management" color="#00AAFF" />
+        <InputRow label="Meditation / clarity" suffix="/ 10" value={meditation}
+          onChange={setMeditation} placeholder="0–10" hint="🧘 → Composure, wet weather, pit strategy" color="#AA44FF" />
 
-        {/* Training toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ color: '#FFF', fontSize: 14, fontWeight: 600 }}>Trained today?</div>
-            <div style={{ color: '#E0C040', fontSize: 11, marginTop: 2 }}>Maps to → Tyre management & endurance</div>
+            <div style={{ color: '#E0C040', fontSize: 11, marginTop: 2 }}>→ Tyre management & endurance</div>
           </div>
           <Toggle value={training} onChange={setTraining} />
         </div>
       </div>
 
-      {/* Derived attribute bars */}
       <div style={{ marginTop: 28 }}>
         <div style={{ color: '#888', fontSize: 10, letterSpacing: 2, marginBottom: 12 }}>
           CAR ATTRIBUTES THIS SESSION
@@ -87,7 +121,6 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
         ))}
       </div>
 
-      {/* Buttons */}
       <div style={{ marginTop: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <button
           onClick={handleConfirm}
@@ -103,8 +136,7 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
         {onCancel && (
           <button onClick={onCancel} style={{
             background: 'none', color: '#888', fontSize: 14,
-            borderRadius: 10, padding: '14px 0',
-            border: '1px solid #333', cursor: 'pointer',
+            borderRadius: 10, padding: '14px 0', border: '1px solid #333', cursor: 'pointer',
           }}>
             Cancel
           </button>
@@ -114,15 +146,17 @@ export const ScoreEntry: React.FC<ScoreEntryProps> = ({
   );
 };
 
-function InputRow({ label, suffix, value, onChange, placeholder, hint }: {
+function InputRow({ label, suffix, value, onChange, placeholder, hint, bonus = 0, color = '#E0C040' }: {
   label: string; suffix: string; value: string;
   onChange: (v: string) => void; placeholder: string; hint: string;
+  bonus?: number; color?: string;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ flex: 1, marginRight: 12 }}>
         <div style={{ color: '#FFF', fontSize: 14, fontWeight: 600 }}>{label}</div>
-        <div style={{ color: '#E0C040', fontSize: 11, marginTop: 2 }}>{hint}</div>
+        <div style={{ color, fontSize: 11, marginTop: 2 }}>{hint}</div>
+        {bonus > 0 && <div style={{ color: '#0090FF', fontSize: 10, marginTop: 1 }}>+{bonus} from sponsor</div>}
       </div>
       <div style={{
         display: 'flex', alignItems: 'center', background: '#1a1a2a',

@@ -8,6 +8,7 @@ interface QualifyingConfig {
   lifeScore: number;
   prepBonus: number; // from practice sessions, up to 0.05
   carDev: CarDevelopment;
+  sprintMode?: boolean;
 }
 
 function driverQualiLapTime(
@@ -54,8 +55,27 @@ function driverQualiLapTime(
 }
 
 export function simulateQualifying(config: QualifyingConfig): QualifyingResult[] {
-  const { circuit, lifeScore, prepBonus, carDev } = config;
+  const { circuit, lifeScore, prepBonus, carDev, sprintMode = false } = config;
   const allDriverIds = DRIVERS_2025.map((d) => d.id);
+
+  // ---- Sprint Qualifying: single 12-min session, all 20 drivers ----
+  if (sprintMode) {
+    const sqTimes = new Map<string, number>();
+    for (const id of allDriverIds) {
+      const lap1 = driverQualiLapTime(id, circuit, lifeScore, prepBonus, carDev, 'Q1');
+      const lap2 = driverQualiLapTime(id, circuit, lifeScore, prepBonus, carDev, 'Q1');
+      sqTimes.set(id, Math.min(lap1, lap2));
+    }
+    const sqSorted = [...allDriverIds].sort((a, b) => sqTimes.get(a)! - sqTimes.get(b)!);
+    return sqSorted.map((id, i) => ({
+      driverId: id,
+      gridPosition: i + 1,
+      q1Time: sqTimes.get(id) ?? null,
+      q2Time: null,
+      q3Time: null,
+      eliminated: null,
+    }));
+  }
 
   // ---- Q1: all 20 drivers, bottom 5 eliminated ----
   const q1Times = new Map<string, number>();

@@ -1,6 +1,6 @@
 export type TyreCompound = 'S' | 'M' | 'H' | 'W' | 'I';
 export type Weather = 'dry' | 'light_rain' | 'heavy_rain';
-export type SessionType = 'FP1' | 'FP2' | 'FP3' | 'Q' | 'Race';
+export type SessionType = 'FP1' | 'FP2' | 'FP3' | 'Q' | 'Race' | 'Sprint';
 export type CarStatus = 'racing' | 'pitting' | 'retired' | 'finished' | 'dnq';
 export type RaceStatus = 'idle' | 'running' | 'paused' | 'finished';
 
@@ -19,11 +19,11 @@ export interface Circuit {
   lengthKm: number;
   poleTime: number;
   drsZones: number;
-  overtakingDifficulty: number; // 1=easy to 10=Monaco
+  overtakingDifficulty: number;
   weatherRainChance: number;
   points: TrackPoint[];
   viewBox: string;
-  sectorBoundaries: [number, number]; // [S1_end_pct, S2_end_pct]
+  sectorBoundaries: [number, number];
 }
 
 export interface Driver {
@@ -55,38 +55,31 @@ export interface Team {
 }
 
 // ---- Car Development System ----
-// Each upgrade area has a level (0-10) and each level costs progressively more.
-// Levels feed directly into simulation math.
 
 export type UpgradeArea = 'aero' | 'engine' | 'chassis' | 'reliability' | 'tyreComp';
 
 export interface UpgradeLevel {
   area: UpgradeArea;
-  level: number; // 0-10
-  maxLevel: number; // 10
-  costPerLevel: number; // prize money cost to reach next level
-  effect: string; // human-readable description
+  level: number;
+  maxLevel: number;
+  costPerLevel: number;
+  effect: string;
 }
 
 export interface CarDevelopment {
-  // Current upgrade levels
-  aero: number;        // 0-10: each level → -0.18% laptime
-  engine: number;      // 0-10: each level → -0.15% laptime (top speed)
-  chassis: number;     // 0-10: each level → -0.12% laptime (mechanical grip)
-  reliability: number; // 0-10: each level → -3% DNF probability
-  tyreComp: number;    // 0-10: each level → -5% tyre degradation rate
-
-  // Budget
-  totalBudgetEarned: number;   // cumulative prize money from race results (fictional $M)
+  aero: number;
+  engine: number;
+  chassis: number;
+  reliability: number;
+  tyreComp: number;
+  totalBudgetEarned: number;
   budgetSpent: number;
-
-  // Derived effective car rating (base + dev points)
-  // Base midfield = 75. Max possible via dev alone = ~85
   effectiveCarRating: number;
+  // Sponsor prize multiplier (1.0 = no boost)
+  prizeMultiplier: number;
 }
 
 export const UPGRADE_COSTS: Record<UpgradeArea, number[]> = {
-  // Cost in $M to go from level N-1 → N
   aero:        [3, 5, 7, 10, 13, 17, 22, 28, 35, 45],
   engine:      [4, 6, 9, 12, 16, 21, 27, 34, 42, 52],
   chassis:     [3, 5, 7, 10, 14, 18, 23, 30, 38, 48],
@@ -100,42 +93,185 @@ export const PRIZE_MONEY_BY_POSITION: Record<number, number> = {
 };
 
 export function calcEffectiveCarRating(dev: CarDevelopment): number {
-  const base = 75; // Apex Racing base
-  const aeroBonus     = dev.aero       * 0.8;
-  const engineBonus   = dev.engine     * 0.7;
-  const chassisBonus  = dev.chassis    * 0.6;
+  const base = 75;
+  const aeroBonus    = dev.aero    * 0.8;
+  const engineBonus  = dev.engine  * 0.7;
+  const chassisBonus = dev.chassis * 0.6;
   return Math.min(base + aeroBonus + engineBonus + chassisBonus, 90);
 }
 
-// How much faster/slower the car is vs baseline given development levels
-// Returns a lap time multiplier (<1 = faster)
 export function devLapTimeMultiplier(dev: CarDevelopment): number {
-  const aeroEffect    = dev.aero       * 0.0018;
-  const engineEffect  = dev.engine     * 0.0015;
-  const chassisEffect = dev.chassis    * 0.0012;
+  const aeroEffect    = dev.aero    * 0.0018;
+  const engineEffect  = dev.engine  * 0.0015;
+  const chassisEffect = dev.chassis * 0.0012;
   return 1 - (aeroEffect + engineEffect + chassisEffect);
 }
 
-// DNF probability modifier (0 = no change, negative = less likely to DNF)
 export function devReliabilityFactor(dev: CarDevelopment): number {
   return 1 - dev.reliability * 0.03;
 }
 
-// Tyre degradation multiplier (1 = no change, <1 = slower deg)
 export function devTyreDegFactor(dev: CarDevelopment): number {
   return 1 - dev.tyreComp * 0.05;
 }
 
 export const DEFAULT_CAR_DEVELOPMENT: CarDevelopment = {
-  aero: 0,
-  engine: 0,
-  chassis: 0,
-  reliability: 0,
-  tyreComp: 0,
-  totalBudgetEarned: 0,
-  budgetSpent: 0,
-  effectiveCarRating: 75,
+  aero: 0, engine: 0, chassis: 0, reliability: 0, tyreComp: 0,
+  totalBudgetEarned: 0, budgetSpent: 0, effectiveCarRating: 75,
+  prizeMultiplier: 1.0,
 };
+
+// ---- Achievement System ----
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  unlockedAt: string | null; // ISO date or null
+}
+
+export const ALL_ACHIEVEMENTS: Achievement[] = [
+  { id: 'first_points',     name: 'Points on the Board', description: 'Finish in the top 10 for the first time',       icon: '🏁', unlockedAt: null },
+  { id: 'first_podium',     name: 'Champagne Time',      description: 'Stand on the podium for the first time',         icon: '🥂', unlockedAt: null },
+  { id: 'first_win',        name: 'Race Winner',         description: 'Win your first race',                             icon: '🏆', unlockedAt: null },
+  { id: 'first_pole',       name: 'Pole Position',       description: 'Start from pole position',                        icon: '⚡', unlockedAt: null },
+  { id: 'fastest_lap',      name: 'Purple Sector',       description: 'Set the fastest lap of the race',                 icon: '💜', unlockedAt: null },
+  { id: 'points_streak_5',  name: 'On a Roll',           description: '5 consecutive points finishes',                   icon: '🔥', unlockedAt: null },
+  { id: 'win_streak_3',     name: 'Hat-Trick Hero',      description: 'Win 3 races in a row',                            icon: '🎩', unlockedAt: null },
+  { id: 'wet_master',       name: 'Rain God',            description: 'Gain 5+ positions in a wet race',                 icon: '🌧', unlockedAt: null },
+  { id: 'champion',         name: 'World Champion',      description: 'Win the Drivers\' Championship',                  icon: '👑', unlockedAt: null },
+  { id: 'perfect_score',    name: 'Perfect Day',         description: 'Enter a session with max hydration & meditation', icon: '💯', unlockedAt: null },
+  { id: 'underdog',         name: 'Against All Odds',    description: 'Win a race starting outside the top 10',          icon: '🚀', unlockedAt: null },
+  { id: 'comeback',         name: 'Phoenix Rising',      description: 'Score points the race after a DNF',               icon: '🛠', unlockedAt: null },
+  { id: 'sprint_winner',    name: 'Sprint King',         description: 'Win a Sprint race',                               icon: '⚡', unlockedAt: null },
+  { id: 'five_wins',        name: 'Serial Winner',       description: 'Win 5 races in a single season',                  icon: '🏅', unlockedAt: null },
+];
+
+// ---- Personal Bests ----
+
+export interface PersonalBests {
+  bestFinish: number;
+  bestGridPosition: number;
+  currentPointsStreak: number;
+  longestPointsStreak: number;
+  currentWinStreak: number;
+  longestWinStreak: number;
+  totalWins: number;
+  totalPodiums: number;
+  totalPoles: number;
+  totalFastestLaps: number;
+  hadDnfLastRace: boolean;
+}
+
+export const DEFAULT_PERSONAL_BESTS: PersonalBests = {
+  bestFinish: 99,
+  bestGridPosition: 99,
+  currentPointsStreak: 0,
+  longestPointsStreak: 0,
+  currentWinStreak: 0,
+  longestWinStreak: 0,
+  totalWins: 0,
+  totalPodiums: 0,
+  totalPoles: 0,
+  totalFastestLaps: 0,
+  hadDnfLastRace: false,
+};
+
+// ---- Sponsor Deals ----
+
+export interface SponsorDeal {
+  id: string;
+  name: string;
+  icon: string;
+  tagline: string;
+  bonusDescription: string;
+  bonusType: 'focus_boost' | 'strategy_boost' | 'prize_multiplier' | 'reliability_boost' | 'sleep_boost';
+  bonusValue: number;
+  requiredPoints: number;
+  active: boolean;
+}
+
+export const AVAILABLE_SPONSORS: SponsorDeal[] = [
+  {
+    id: 'energy_drink',
+    name: 'VoltMax Energy',
+    icon: '⚡',
+    tagline: 'Unleash Your Potential',
+    bonusDescription: '+8 focus score on race day',
+    bonusType: 'focus_boost',
+    bonusValue: 8,
+    requiredPoints: 0,
+    active: false,
+  },
+  {
+    id: 'sports_brand',
+    name: 'Apex Athletics',
+    icon: '🏃',
+    tagline: 'Train Like a Champion',
+    bonusDescription: '+5 tyre management from training days',
+    bonusType: 'strategy_boost',
+    bonusValue: 5,
+    requiredPoints: 20,
+    active: false,
+  },
+  {
+    id: 'tech_firm',
+    name: 'DataCore Systems',
+    icon: '💻',
+    tagline: 'Race Smarter, Not Harder',
+    bonusDescription: '+20% prize money multiplier',
+    bonusType: 'prize_multiplier',
+    bonusValue: 0.2,
+    requiredPoints: 50,
+    active: false,
+  },
+  {
+    id: 'pharma',
+    name: 'RestoreFit Health',
+    icon: '💊',
+    tagline: 'Recovery is Performance',
+    bonusDescription: '+1 sleep quality on race weekends',
+    bonusType: 'sleep_boost',
+    bonusValue: 1,
+    requiredPoints: 30,
+    active: false,
+  },
+];
+
+// ---- Engineer Profile ----
+
+export interface EngineerProfile {
+  name: string;
+  personality: 'calm' | 'aggressive' | 'analytical';
+}
+
+export const DEFAULT_ENGINEER: EngineerProfile = {
+  name: 'James',
+  personality: 'calm',
+};
+
+// ---- Rival ----
+
+export interface RivalInfo {
+  driverId: string;
+  gapToRival: number; // points gap (positive = you're ahead)
+}
+
+// ---- Strategy Choice ----
+
+export interface StrategyChoice {
+  startingCompound: TyreCompound;
+  pitWindow: 'early' | 'medium' | 'late';
+}
+
+// ---- Team Transfer Offer ----
+
+export interface TeamTransferOffer {
+  teamId: string;
+  teamName: string;
+  carRatingBonus: number; // how much better the offered team car is
+}
 
 // ---- Simulation types ----
 
@@ -186,6 +322,8 @@ export interface RaceCarState {
   points: number;
   fastestLap: boolean;
   trackPosition: TrackPoint;
+  // Lap-by-lap position history for lap chart
+  positionHistory: number[];
 }
 
 export interface RaceConditions {
@@ -215,20 +353,21 @@ export interface RaceState {
 
 export interface RaceEvent {
   lap: number;
-  type: 'overtake' | 'pit' | 'safety_car' | 'dnf' | 'weather' | 'fastest_lap' | 'finish';
+  type: 'overtake' | 'pit' | 'safety_car' | 'dnf' | 'weather' | 'fastest_lap' | 'finish' | 'engineer_radio';
   message: string;
 }
 
 export interface RaceWeekend {
   circuitId: string;
   raceIndex: number;
-  // Each session has its own DailyScore (entered the day of that session)
+  hasSprint: boolean;
   sessionScores: {
     fp1: import('./scoreTypes').DailyScore | null;
     fp2: import('./scoreTypes').DailyScore | null;
     fp3: import('./scoreTypes').DailyScore | null;
     qualifying: import('./scoreTypes').DailyScore | null;
     race: import('./scoreTypes').DailyScore | null;
+    sprint: import('./scoreTypes').DailyScore | null;
   };
   practiceResults: {
     fp1: PracticeResult[] | null;
@@ -238,10 +377,14 @@ export interface RaceWeekend {
   qualifyingResult: QualifyingResult[] | null;
   userGridPosition: number | null;
   raceResult: FinishedRaceResult[] | null;
-  // Practice prep bonus: accumulated from FP sessions, reduces qualifying uncertainty
-  prepBonus: number; // 0-0.05
-  // Strategy bonus: from Todoist score in qualifying session
-  strategyBonus: number; // 0-0.03 affects pit timing in race
+  // Sprint
+  sprintQualifyingResult: QualifyingResult[] | null;
+  sprintGridPosition: number | null;
+  sprintRaceResult: FinishedRaceResult[] | null;
+  // Strategy
+  strategyChoice: StrategyChoice | null;
+  prepBonus: number;
+  strategyBonus: number;
   completed: boolean;
 }
 
@@ -257,6 +400,8 @@ export interface FinishedRaceResult {
   bestLapTime: number;
   dnfLap: number | null;
   prizeMoneyM: number;
+  // Lap-by-lap positions for chart
+  positionHistory: number[];
 }
 
 export interface DriverStanding {
@@ -278,12 +423,13 @@ export interface ConstructorStanding {
 
 export interface Season {
   year: number;
-  seasonNumber: number; // 1 = first season, 2 = second, etc.
-  currentRaceIndex: number; // next race to be run (0-23)
+  seasonNumber: number;
+  currentRaceIndex: number;
   weekends: RaceWeekend[];
   driverStandings: DriverStanding[];
   constructorStandings: ConstructorStanding[];
-  carDevelopment: CarDevelopment; // user's car dev for this season
+  carDevelopment: CarDevelopment;
+  sprintPoints: Record<string, number>; // driverId → sprint points
 }
 
 export interface GameState {
@@ -294,10 +440,17 @@ export interface GameState {
   allSeasons: Season[];
   lifeScoreHistory: { date: string; score: number }[];
   settings: GameSettings;
+  // New systems
+  achievements: Achievement[];
+  personalBests: PersonalBests;
+  engineer: EngineerProfile;
+  rivalInfo: RivalInfo | null;
+  sponsorDeals: SponsorDeal[];
+  transferOffer: TeamTransferOffer | null;
 }
 
 export interface GameSettings {
-  simSpeed: number; // 30 | 60 | 120 | 300
+  simSpeed: number;
   soundEnabled: boolean;
 }
 
@@ -307,6 +460,8 @@ export type RootStackParamList = {
   Practice: { raceIndex: number; session: 'FP1' | 'FP2' | 'FP3' };
   Qualifying: { raceIndex: number };
   Race: { raceIndex: number };
+  Sprint: { raceIndex: number };
+  SeasonEnd: undefined;
   Onboarding: undefined;
   Garage: undefined;
 };

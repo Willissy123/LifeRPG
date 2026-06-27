@@ -11,6 +11,8 @@ import RaceWeekendScreen from './screens/RaceWeekendScreen';
 import PracticeScreen from './screens/PracticeScreen';
 import QualifyingScreen from './screens/QualifyingScreen';
 import RaceScreen from './screens/RaceScreen';
+import SprintScreen from './screens/SprintScreen';
+import SeasonEndScreen from './screens/SeasonEndScreen';
 
 const TAB_ROUTES = [
   { path: '/home', label: 'Season', icon: '🏠' },
@@ -68,6 +70,9 @@ function AppInner() {
           <Route path="/practice/:raceIndex/:session" element={<PracticeScreen />} />
           <Route path="/qualifying/:raceIndex" element={<QualifyingScreen />} />
           <Route path="/race/:raceIndex" element={<RaceScreen />} />
+          <Route path="/sprint/:raceIndex" element={<SprintScreen />} />
+          <Route path="/sprint-qualifying/:raceIndex" element={<QualifyingScreen sprint />} />
+          <Route path="/season-end" element={<SeasonEndScreen />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </div>
@@ -88,8 +93,7 @@ export default function App() {
     return (
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', height: '100vh', background: '#0a0a0f',
-        gap: 16,
+        justifyContent: 'center', height: '100vh', background: '#0a0a0f', gap: 16,
       }}>
         <span style={{ fontSize: 48 }}>🏎</span>
         <div style={{

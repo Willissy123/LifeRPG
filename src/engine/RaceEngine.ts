@@ -13,6 +13,8 @@ import {
   devTyreDegFactor,
   PRIZE_MONEY_BY_POSITION,
   TrackPoint,
+  StrategyChoice,
+  EngineerProfile,
 } from '../types';
 import { DailyScore } from '../types/scoreTypes';
 import { DRIVERS_2025, USER_DRIVER_ID } from '../data/drivers2025';
@@ -114,9 +116,16 @@ function calcLapTime(
       * conditionsMult * prepMult * devMult;
 
     // Strategy bonus: high todoist % = better tyre management in race
-    // Applied as a tyre deg correction
     if (strategyBonus > 0) {
       pace *= (1 - strategyBonus * 0.5);
+    }
+
+    // Hydration effect: poor hydration hurts in the final 30% of laps (fatigue)
+    const hydration = (raceScore as any).hydration ?? 5;
+    const lapFraction = car.currentLap / circuit.laps;
+    if (lapFraction > 0.70 && hydration < 7) {
+      const dehydrationPenalty = (7 - hydration) * 0.004; // up to +2.4% slower
+      pace *= (1 + dehydrationPenalty);
     }
   } else {
     // AI: wet skill affects wet lap time
@@ -164,15 +173,53 @@ function checkDNF(
   lap: number,
   carDev: CarDevelopment,
 ): boolean {
-  if (!car.driverId.startsWith(USER_DRIVER_ID)) {
-    // AI DNF chance ~2.5% per race, weighted to early laps
+  if (car.driverId !== USER_DRIVER_ID) {
     const baseDnfChance = 0.0013;
     return Math.random() < baseDnfChance;
   }
-  // User DNF: base 1.5%, reduced by reliability upgrades
   const baseDnfChance = 0.0008;
   const reliabilityMult = devReliabilityFactor(carDev);
   return Math.random() < baseDnfChance * reliabilityMult;
+}
+
+// ---- Engineer radio messages ----
+
+const ENGINEER_PUSH_MESSAGES = [
+  'P1 is within reach — push, push, push!',
+  'Gap to car ahead is 1.2 — stay on it!',
+  'Keep that gap, we\'re in a great position.',
+  'Tyres looking good — push for the fastest lap!',
+  'Fuel is fine, deploy full power now!',
+  'DRS available next straight — use it!',
+];
+
+const ENGINEER_HOLD_MESSAGES = [
+  'Box box box! Come in this lap.',
+  'Tyres dropping off — we need to box.',
+  'Undercut window open. Box this lap.',
+  'Safety car is in — now is the time to pit!',
+  'Hard tyre going on — should last to the end.',
+];
+
+const ENGINEER_CELEBRATE = [
+  'P1! Unbelievable drive — you\'re leading!',
+  'Fastest lap in the pocket — beautiful!',
+  'Podium confirmed — outstanding job!',
+  'Champion! What a season!',
+];
+
+export function getEngineerMessage(
+  type: 'push' | 'pit' | 'celebrate',
+  engineer: EngineerProfile,
+): string {
+  const pool = type === 'push' ? ENGINEER_PUSH_MESSAGES
+    : type === 'pit' ? ENGINEER_HOLD_MESSAGES
+    : ENGINEER_CELEBRATE;
+  const msg = pool[Math.floor(Math.random() * pool.length)];
+  const prefix = engineer.personality === 'calm' ? `${engineer.name}: `
+    : engineer.personality === 'aggressive' ? `${engineer.name} (urgent): `
+    : `${engineer.name} (data): `;
+  return prefix + msg;
 }
 
 // ---- Race initialiser ----
@@ -184,20 +231,36 @@ export function initRace(
   _raceScore: DailyScore,
   _prepBonus: number,
   _carDev: CarDevelopment,
+  strategyChoice?: StrategyChoice | null,
 ): RaceState {
   const trackLengthM = circuit.lengthKm * 1000;
 
   const cars: RaceCarState[] = gridOrder.map((driverId, index) => {
-    const startTyre = recommendedStartTyre(circuit, conditions.weather);
-    const pitLap = conditions.weather === 'dry' ? planPitLap(circuit, startTyre) : null;
+    const isUser = driverId === USER_DRIVER_ID;
+    let startTyre: TyreCompound;
+    if (isUser && strategyChoice && conditions.weather === 'dry') {
+      startTyre = strategyChoice.startingCompound;
+    } else {
+      startTyre = recommendedStartTyre(circuit, conditions.weather);
+    }
 
-    // Stagger start positions slightly so cars aren't perfectly overlapping
-    const gridOffset = (gridOrder.length - 1 - index) * 8; // meters behind leader's grid box
+    let pitLap: number | null = null;
+    if (conditions.weather === 'dry') {
+      if (isUser && strategyChoice) {
+        const laps = circuit.laps;
+        const windowMap = { early: 0.28, medium: 0.36, late: 0.46 };
+        pitLap = Math.floor(laps * windowMap[strategyChoice.pitWindow] + randBetween(-2, 2));
+      } else {
+        pitLap = planPitLap(circuit, startTyre);
+      }
+    }
+
+    const gridOffset = (gridOrder.length - 1 - index) * 8;
 
     return {
       driverId,
       position: index + 1,
-      totalDistanceM: -gridOffset, // will go positive after lap 1
+      totalDistanceM: -gridOffset,
       currentLap: 1,
       lapProgress: 0,
       tyreCompound: startTyre,
@@ -217,6 +280,7 @@ export function initRace(
       points: 0,
       fastestLap: false,
       trackPosition: positionAlongTrack(0, circuit.points),
+      positionHistory: [index + 1],
     };
   });
 
@@ -248,6 +312,7 @@ export function tickRace(
   prepBonus: number,
   carDev: CarDevelopment,
   strategyBonus = 0,
+  _engineer?: EngineerProfile,
 ): RaceState {
   if (state.status === 'finished' || state.status === 'paused') return state;
 
@@ -257,6 +322,7 @@ export function tickRace(
   const newEvents: RaceEvent[] = [];
   let newFastestTime = state.fastestLapTime;
   let newFastestHolder = state.fastestLapHolder;
+  let dnfOccurredThisTick = false;
 
   // Update each car
   let updatedCars = state.cars.map((car) => {
@@ -281,7 +347,9 @@ export function tickRace(
         c.tyreHealth = 100;
         c.inPitLane = false;
         c.pitTimer = 0;
-        newEvents.push({ lap: c.currentLap, type: 'pit', message: `${c.driverId} returns from pit on ${newCompound} tyres` });
+        const pitDriver = DRIVERS_2025.find((d) => d.id === c.driverId);
+        const pitName = pitDriver?.shortName ?? c.driverId;
+        newEvents.push({ lap: c.currentLap, type: 'pit', message: `${pitName} returns from pit on ${newCompound} tyres` });
       }
       // Cars in pit don't move forward along track
       return c;
@@ -321,7 +389,9 @@ export function tickRace(
           if (!newFastestTime || lap < newFastestTime) {
             newFastestTime = lap;
             newFastestHolder = c.driverId;
-            newEvents.push({ lap: c.currentLap - 1, type: 'fastest_lap', message: `${c.driverId} sets fastest lap: ${lap.toFixed(3)}s` });
+            const flDriver = DRIVERS_2025.find((d) => d.id === c.driverId);
+            const flName = flDriver?.shortName ?? c.driverId;
+            newEvents.push({ lap: c.currentLap - 1, type: 'fastest_lap', message: `${flName} sets fastest lap: ${lap.toFixed(3)}s` });
           }
         }
       }
@@ -342,8 +412,16 @@ export function tickRace(
       if (checkDNF(c, c.currentLap, carDev)) {
         c.status = 'retired';
         c.dnfLap = c.currentLap;
-        newEvents.push({ lap: c.currentLap, type: 'dnf', message: `${c.driverId} retires from the race!` });
+        const driver = DRIVERS_2025.find((d) => d.id === c.driverId);
+        const shortName = driver?.shortName ?? c.driverId;
+        newEvents.push({ lap: c.currentLap, type: 'dnf', message: `${shortName} retires from the race with a mechanical failure!` });
+        dnfOccurredThisTick = true;
       }
+    }
+
+    // Record position history once per lap
+    if (c.currentLap > (c.positionHistory?.length ?? 0)) {
+      c.positionHistory = [...(c.positionHistory ?? []), c.position];
     }
 
     // Track position for visualisation
@@ -352,7 +430,9 @@ export function tickRace(
     // Finish check
     if (c.currentLap > circuit.laps && c.status === 'racing') {
       c.status = 'finished';
-      newEvents.push({ lap: circuit.laps, type: 'finish', message: `${c.driverId} crosses the finish line` });
+      const driver = DRIVERS_2025.find((d) => d.id === c.driverId);
+      const shortName = driver?.shortName ?? c.driverId;
+      newEvents.push({ lap: circuit.laps, type: 'finish', message: `${shortName} crosses the finish line` });
     }
 
     return c;
@@ -370,21 +450,35 @@ export function tickRace(
       newConditions.weather = 'heavy_rain';
       newEvents.push({ lap: Math.ceil(lapTick), type: 'weather', message: 'Heavy rain! Safety car deployed.' });
       newConditions.safetyCarActive = true;
+      newConditions.safetyCarLap = state.currentSimLap;
     } else if (newConditions.weather === 'heavy_rain' && Math.random() < 0.10) {
       newConditions.weather = 'light_rain';
       newEvents.push({ lap: Math.ceil(lapTick), type: 'weather', message: 'Rain easing off. Track drying.' });
     }
   }
 
-  // Safety car: triggered by heavy rain or random incident
-  if (!newConditions.safetyCarActive && Math.random() < 0.003) {
-    newConditions.safetyCarActive = true;
-    newConditions.safetyCarLap = state.currentSimLap;
-    newEvents.push({ lap: state.currentSimLap, type: 'safety_car', message: 'Safety car deployed! All cars hold position.' });
+  // Safety car: triggered by DNF events (70% chance) or rare random incident (0.2%)
+  if (!newConditions.safetyCarActive) {
+    if (dnfOccurredThisTick && Math.random() < 0.70) {
+      newConditions.safetyCarActive = true;
+      newConditions.safetyCarLap = state.currentSimLap;
+      newEvents.push({ lap: state.currentSimLap, type: 'safety_car', message: 'Safety car deployed due to incident on track!' });
+    } else if (!dnfOccurredThisTick && Math.random() < 0.002) {
+      newConditions.safetyCarActive = true;
+      newConditions.safetyCarLap = state.currentSimLap;
+      newEvents.push({ lap: state.currentSimLap, type: 'safety_car', message: 'Safety car out — debris on track.' });
+    }
   }
   if (newConditions.safetyCarActive && Math.random() < 0.15) {
     newConditions.safetyCarActive = false;
-    newEvents.push({ lap: state.currentSimLap, type: 'safety_car', message: 'Safety car in! Racing resumes.' });
+    newEvents.push({ lap: state.currentSimLap, type: 'safety_car', message: 'Safety car in! Green flag — racing resumes.' });
+  }
+
+  // Engineer radio (periodic push messages for user)
+  const userCar = updatedCars.find((c) => c.driverId === USER_DRIVER_ID);
+  if (userCar && userCar.status === 'racing' && state.raceTick % 120 === 60) {
+    const msg = ENGINEER_PUSH_MESSAGES[Math.floor(Math.random() * ENGINEER_PUSH_MESSAGES.length)];
+    newEvents.push({ lap: state.currentSimLap, type: 'engineer_radio', message: `Engineer: ${msg}` });
   }
 
   // Resolve overtakes between close cars
@@ -486,6 +580,7 @@ export function finaliseRace(
       bestLapTime: car.bestLapTime,
       dnfLap: car.dnfLap,
       prizeMoneyM: prize,
+      positionHistory: car.positionHistory ?? [],
     };
   });
 }
