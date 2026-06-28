@@ -1,9 +1,111 @@
-@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-@keyframes confettiFall { from { transform: translateY(-20px) rotate(0deg); opacity: 1; } to { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
-@keyframes countUp { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
-@keyframes battlePulse { 0%, 100% { opacity: 1; box-shadow: 0 0 8px #FF8800; } 50% { opacity: 0.7; box-shadow: 0 0 20px #FF8800; } }
-@keyframes lightReveal { from { background: #333; } to { background: #FF2222; } }
-@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: calc(200px + 100%) 0; } }
-@keyframes tyrePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* ── Entry animations ── */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes bounceIn {
+  0%   { opacity: 0; transform: scale(0.3); }
+  50%  { opacity: 1; transform: scale(1.1); }
+  70%  { transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes heroIn {
+  from { opacity: 0; transform: translateY(-14px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Pulse / glow ── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 6px currentColor; opacity: 1; }
+  50%       { box-shadow: 0 0 28px currentColor, 0 0 56px currentColor; opacity: 0.85; }
+}
+@keyframes expandRing {
+  0%   { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+@keyframes battlePulse {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 8px #FF8800; }
+  50%       { opacity: 0.7; box-shadow: 0 0 22px #FF8800, 0 0 44px #FF880044; }
+}
+@keyframes tyrePulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* ── Celebration ── */
+@keyframes confettiFall {
+  0%   { transform: translateY(-20px) rotate(0deg) scale(1);   opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(105vh) rotate(720deg) scale(0.5); opacity: 0; }
+}
+@keyframes confettiSpin {
+  0%   { transform: translateY(-10px) rotateX(0deg) rotateZ(0deg);     opacity: 1; }
+  100% { transform: translateY(105vh) rotateX(360deg) rotateZ(540deg); opacity: 0; }
+}
+@keyframes goldBurst {
+  0%   { transform: scale(0); opacity: 1; }
+  60%  { transform: scale(1.25); opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* ── Race ── */
+@keyframes lightReveal {
+  from { background: #1a0000; box-shadow: none; }
+  to   { background: #FF2222; box-shadow: 0 0 20px #FF2222, 0 0 40px #FF000066; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes countUp {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Loading ── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+/* ── Feedback ── */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-7px); }
+  40%       { transform: translateX(7px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px); }
+}
+@keyframes notifPop {
+  0%   { opacity: 0; transform: translateY(-14px) scale(0.9); }
+  60%  { transform: translateY(3px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes tabPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes rowReveal {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

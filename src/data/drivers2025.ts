@@ -304,6 +304,22 @@ export const DRIVERS_2025: Driver[] = [
     color: '#3AC43A',
     isUser: false,
   },
+  // Apex Racing teammate
+  {
+    id: 'alex_rossi',
+    name: 'Alex Rossi',
+    shortName: 'ROS',
+    number: 8,
+    teamId: USER_TEAM_ID,
+    nationality: 'ITA',
+    skill: 72,
+    qualifyingSkill: 71,
+    racecraftSkill: 73,
+    tyreManagement: 74,
+    wetSkill: 70,
+    color: '#B8A030',
+    isUser: false,
+  },
   // User's driver
   {
     id: USER_DRIVER_ID,

@@ -112,6 +112,7 @@ export default function HomeScreen() {
         background: `linear-gradient(160deg, ${teamColor}28 0%, #0a0a0f 70%)`,
         padding: '28px 20px 24px',
         borderBottom: `1px solid ${teamColor}22`,
+        animation: 'heroIn 0.5s ease-out both',
       }}>
         {/* Watermark number */}
         <div style={{
@@ -133,13 +134,33 @@ export default function HomeScreen() {
         </div>
 
         {/* Championship position — the hero number */}
-        <div style={{
-          fontSize: 80, fontWeight: 900, lineHeight: 1,
-          color: userPos === 1 ? '#E0C040' : '#FFF',
-          textShadow: userPos === 1 ? `0 0 40px ${teamColor}88, 0 0 80px ${teamColor}44` : 'none',
-          letterSpacing: -2,
-        }}>
-          {posLabel}
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          {/* Expanding ring behind P1 */}
+          {userPos === 1 && (
+            <>
+              <div style={{
+                position: 'absolute', inset: -8, borderRadius: 16,
+                border: `2px solid ${teamColor}`,
+                animation: 'expandRing 1.8s ease-out infinite',
+              }} />
+              <div style={{
+                position: 'absolute', inset: -8, borderRadius: 16,
+                border: `2px solid ${teamColor}`,
+                animation: 'expandRing 1.8s ease-out infinite',
+                animationDelay: '0.6s',
+              }} />
+            </>
+          )}
+          <div style={{
+            fontSize: 80, fontWeight: 900, lineHeight: 1,
+            color: userPos === 1 ? '#E0C040' : '#FFF',
+            textShadow: userPos === 1 ? `0 0 40px ${teamColor}88, 0 0 80px ${teamColor}44` : 'none',
+            letterSpacing: -2,
+            animation: 'bounceIn 0.6s ease-out both',
+            animationDelay: '0.15s',
+          }}>
+            {posLabel}
+          </div>
         </div>
 
         {/* Name + team */}
@@ -204,7 +225,9 @@ export default function HomeScreen() {
         </div>
       )}
 
-      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
+      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}
+        // stagger children via inline style on each child below
+      >
 
         {/* ── NEXT RACE CTA ── */}
         {!allComplete && nextCircuit && nextCal && (
@@ -213,6 +236,7 @@ export default function HomeScreen() {
             style={{
               width: '100%', border: 'none', cursor: 'pointer', textAlign: 'left',
               background: '#111120', borderRadius: 18,
+              animation: 'fadeSlideUp 0.4s ease-out both', animationDelay: '0.05s',
               overflow: 'hidden', padding: 0,
               boxShadow: `0 0 0 1px ${teamColor}22`,
             }}
@@ -296,7 +320,7 @@ export default function HomeScreen() {
 
         {/* ── RECENT RESULTS (horizontal scroll) ── */}
         {recentResults.length > 0 && (
-          <div>
+          <div style={{ animation: 'fadeSlideUp 0.4s ease-out both', animationDelay: '0.12s' }}>
             <div style={{ color: '#555', fontSize: 10, letterSpacing: 2, marginBottom: 10 }}>RECENT RESULTS</div>
             <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
               {recentResults.map((w) => {
@@ -336,6 +360,7 @@ export default function HomeScreen() {
         {rivalDriver && rivalStanding && (
           <div style={{
             background: 'linear-gradient(135deg, #1a0808 0%, #111120 100%)',
+            animation: 'fadeSlideUp 0.4s ease-out both', animationDelay: '0.18s',
             borderRadius: 16, padding: 16,
             border: '1px solid #FF444422',
             boxShadow: '0 0 20px #FF444411',
@@ -394,7 +419,7 @@ export default function HomeScreen() {
         )}
 
         {/* ── CHAMPIONSHIP TABLE ── */}
-        <div style={{ background: '#111120', borderRadius: 16, padding: 16 }}>
+        <div style={{ background: '#111120', borderRadius: 16, padding: 16, animation: 'fadeSlideUp 0.4s ease-out both', animationDelay: '0.24s' }}>
           <div style={{ color: '#555', fontSize: 10, letterSpacing: 2, marginBottom: 12 }}>
             CHAMPIONSHIP · TOP 8
           </div>
@@ -441,7 +466,7 @@ export default function HomeScreen() {
 
         {/* ── RECENT ACHIEVEMENTS ── */}
         {recentAchievements.length > 0 && (
-          <div style={{ background: '#111120', borderRadius: 16, padding: 16 }}>
+          <div style={{ background: '#111120', borderRadius: 16, padding: 16, animation: 'fadeSlideUp 0.4s ease-out both', animationDelay: '0.30s' }}>
             <div style={{ color: '#555', fontSize: 10, letterSpacing: 2, marginBottom: 10 }}>
               🏅 ACHIEVEMENTS
             </div>
@@ -468,7 +493,7 @@ export default function HomeScreen() {
 
         {/* ── CAREER BESTS ── */}
         {(personalBests.totalWins > 0 || personalBests.bestFinish < 99) && (
-          <div style={{ background: '#111120', borderRadius: 16, padding: 16 }}>
+          <div style={{ background: '#111120', borderRadius: 16, padding: 16, animation: 'fadeSlideUp 0.4s ease-out both', animationDelay: '0.36s' }}>
             <div style={{ color: '#555', fontSize: 10, letterSpacing: 2, marginBottom: 10 }}>CAREER BESTS</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {personalBests.bestFinish < 99 && (
@@ -497,6 +522,7 @@ export default function HomeScreen() {
             border: '1px solid #1a1a2a', color: '#E0C040', fontWeight: 'bold',
             fontSize: 14, cursor: 'pointer', width: '100%',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            animation: 'fadeSlideUp 0.4s ease-out both', animationDelay: '0.42s',
           }}
         >
           <span>📈 Career History</span>
