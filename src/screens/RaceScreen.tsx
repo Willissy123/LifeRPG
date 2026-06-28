@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { RaceState, FinishedRaceResult, StrategyChoice, TyreCompound } from '../types';
+import { RaceState, RaceCarState, FinishedRaceResult, StrategyChoice, TyreCompound } from '../types';
 import { DailyScore } from '../types/scoreTypes';
 import { ScoreEntry } from '../components/ScoreEntry';
 import { TrackMap } from '../components/TrackMap';
@@ -417,6 +417,11 @@ export default function RaceScreen() {
   // Racing screen
   if (!raceState) return null;
   const userCar = raceState.cars.find((c) => c.driverId === USER_DRIVER_ID);
+  const userDriverObj = getDriver(USER_DRIVER_ID);
+  const userTeamObj = userDriverObj ? getTeam(userDriverObj.teamId) : null;
+  const teamColor = userTeamObj?.color ?? '#E0C040';
+  const carAheadState = userCar ? raceState.cars.find(c => c.position === userCar.position - 1) : null;
+  const carAheadDriver = carAheadState ? getDriver(carAheadState.driverId) : null;
   const isPaused = raceState.status === 'paused';
   const recentEvents = raceState.events.slice(-5).reverse();
 
@@ -470,48 +475,6 @@ export default function RaceScreen() {
           width={dims.w}
           height={dims.h}
         />
-        {userCar && (
-          <div style={{
-            position: 'absolute', bottom: 8, left: 8,
-            display: 'flex', gap: 12, background: 'rgba(0,0,0,0.75)',
-            borderRadius: 8, padding: '6px 12px', alignItems: 'center',
-          }}>
-            <span style={{ color: '#E0C040', fontWeight: 'bold', fontSize: 16 }}>P{userCar.position}</span>
-            <span style={{ color: '#FFF', fontSize: 13 }}>L{Math.min(userCar.currentLap, circuit.laps)}/{circuit.laps}</span>
-            <span style={{ color: '#AAA', fontSize: 13 }}>
-              {userCar.position === 1 ? 'LEAD' : `+${userCar.gapToLeader.toFixed(1)}s`}
-            </span>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <span style={{
-                background: COMPOUND_COLORS[userCar.tyreCompound], color: '#000',
-                fontWeight: 'bold', fontSize: 11, borderRadius: 4, padding: '2px 5px',
-              }}>
-                {userCar.tyreCompound} {userCar.tyreAgeLaps}L
-              </span>
-              {/* Tyre health bar */}
-              <div style={{ width: 40, height: 3, background: '#222', borderRadius: 2 }}>
-                <div style={{
-                  width: `${userCar.tyreHealth}%`, height: '100%',
-                  background: tyreHealthColor(userCar.tyreHealth), borderRadius: 2,
-                  animation: userCar.tyreHealth <= 20 ? 'tyrePulse 0.7s infinite' : undefined,
-                }} />
-              </div>
-            </div>
-            {/* Gap sparkline */}
-            <GapSparkline gaps={gapHistoryRef.current} />
-            {/* Sector indicator */}
-            <div style={{ display: 'flex', gap: 2 }}>
-              {[1, 2, 3].map((s) => (
-                <span key={s} style={{
-                  fontSize: 9, fontWeight: 'bold', padding: '1px 3px', borderRadius: 2,
-                  color: sector === s ? '#000' : '#666',
-                  background: sector === s ? '#E0C040' : '#1a1a2a',
-                }}>S{s}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Battle badge */}
         {inBattle && (
           <div style={{
@@ -521,26 +484,24 @@ export default function RaceScreen() {
             fontWeight: 'bold', fontSize: 11, color: '#FFF',
           }}>⚔️ BATTLE</div>
         )}
-
-        <div style={{ position: 'absolute', bottom: 8, right: 8, display: 'flex', gap: 8 }}>
-          <button onClick={handlePause} style={{
-            background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '8px 14px',
-            border: 'none', color: '#FFF', fontSize: 18, cursor: 'pointer',
-          }}>{isPaused ? '▶' : '⏸'}</button>
-          <button onClick={handleSpeedChange} style={{
-            background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '8px 14px',
-            border: 'none', color: '#E0C040', fontSize: 14, fontWeight: 'bold', cursor: 'pointer',
-          }}>{SPEED_LABELS[simSpeed]}</button>
-        </div>
-        {raceState.conditions.safetyCarActive && (
-          <div style={{
-            position: 'absolute', top: 8, left: 8, background: '#E0C040',
-            borderRadius: 6, padding: '4px 10px',
-          }}>
-            <span style={{ color: '#000', fontWeight: 'bold', fontSize: 12 }}>SC OUT</span>
-          </div>
-        )}
       </div>
+
+      {/* F1 Gaming HUD */}
+      {userCar && (
+        <F1HUD
+          userCar={userCar}
+          totalLaps={circuit.laps}
+          sector={sector}
+          inBattle={inBattle}
+          gapHistory={gapHistoryRef.current}
+          isPaused={isPaused}
+          simSpeed={simSpeed}
+          teamColor={teamColor}
+          carAheadName={carAheadDriver?.shortName}
+          onPause={handlePause}
+          onSpeed={handleSpeedChange}
+        />
+      )}
 
       {/* Event feed - recent events */}
       <div style={{ background: '#0f0f1a', padding: '4px 12px', flexShrink: 0, minHeight: 30 }}>
@@ -570,6 +531,145 @@ export default function RaceScreen() {
           fastestLapHolder={raceState.fastestLapHolder}
           raceFinished={false}
         />
+      </div>
+    </div>
+  );
+}
+
+interface F1HUDProps {
+  userCar: RaceCarState;
+  totalLaps: number;
+  sector: number;
+  inBattle: boolean;
+  gapHistory: number[];
+  isPaused: boolean;
+  simSpeed: number;
+  teamColor: string;
+  carAheadName?: string;
+  onPause: () => void;
+  onSpeed: () => void;
+}
+
+function F1HUD({ userCar, totalLaps, sector, inBattle, gapHistory, isPaused, simSpeed, teamColor, carAheadName, onPause, onSpeed }: F1HUDProps) {
+  const lapFraction = (Math.min(userCar.currentLap, totalLaps) - 1 + userCar.lapProgress) / totalLaps;
+  const drsAvailable = inBattle && userCar.gapToCarAhead > 0 && userCar.gapToCarAhead < 1.0;
+
+  return (
+    <div style={{ background: '#09090f', borderTop: '2px solid #1c1c30', padding: '10px 14px 8px', flexShrink: 0 }}>
+      {/* Main info row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        {/* Large position */}
+        <div style={{
+          color: teamColor, fontWeight: 900, fontSize: 30, lineHeight: 1,
+          textShadow: `0 0 20px ${teamColor}99, 0 0 8px ${teamColor}44`,
+          minWidth: 52, textAlign: 'center', fontVariant: 'tabular-nums', letterSpacing: -1,
+        }}>P{userCar.position}</div>
+
+        {/* Center: lap + progress + gap */}
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+            <span style={{ color: '#555', fontSize: 9, letterSpacing: 1 }}>LAP</span>
+            <span style={{ color: '#EEE', fontWeight: 700, fontSize: 14, fontVariant: 'tabular-nums' }}>
+              {Math.min(userCar.currentLap, totalLaps)}<span style={{ color: '#444', fontWeight: 400 }}>/{totalLaps}</span>
+            </span>
+            <span style={{
+              color: userCar.position === 1 ? teamColor : '#BBBBBB',
+              fontWeight: userCar.position === 1 ? 700 : 400,
+              fontSize: 12, fontVariant: 'tabular-nums',
+            }}>
+              {userCar.position === 1 ? 'LEADER' : `+${userCar.gapToLeader.toFixed(1)}s`}
+            </span>
+          </div>
+          {/* Lap progress bar */}
+          <div style={{ height: 4, background: '#1a1a2a', borderRadius: 2, marginBottom: 5, position: 'relative', overflow: 'hidden' }}>
+            <div style={{
+              position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 2,
+              background: `${teamColor}cc`,
+              width: `${lapFraction * 100}%`,
+              boxShadow: `0 0 6px ${teamColor}88`,
+              transition: 'width 0.1s linear',
+            }} />
+          </div>
+          {/* Gap to car ahead */}
+          {userCar.position > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ color: '#444', fontSize: 9, letterSpacing: 1 }}>AHEAD</span>
+              {carAheadName && (
+                <span style={{ color: '#666', fontSize: 9, fontWeight: 600 }}>{carAheadName}</span>
+              )}
+              <span style={{
+                color: drsAvailable ? '#FF8800' : inBattle ? '#FFB300' : '#888',
+                fontWeight: inBattle ? 700 : 400, fontSize: 11, fontVariant: 'tabular-nums',
+                marginLeft: 'auto',
+              }}>
+                {userCar.gapToCarAhead > 0 ? `${userCar.gapToCarAhead.toFixed(2)}s` : '—'}
+              </span>
+              {drsAvailable && (
+                <span style={{
+                  color: '#00CCFF', fontWeight: 700, fontSize: 9,
+                  border: '1px solid rgba(0,204,255,0.4)', borderRadius: 3, padding: '1px 4px',
+                  background: 'rgba(0,204,255,0.08)', letterSpacing: 0.5,
+                }}>DRS</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right: tyre */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 56 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{
+              width: 13, height: 13, borderRadius: '50%',
+              background: COMPOUND_COLORS[userCar.tyreCompound],
+              boxShadow: `0 0 10px ${COMPOUND_COLORS[userCar.tyreCompound]}99`,
+            }} />
+            <span style={{ color: '#DDD', fontWeight: 700, fontSize: 14 }}>{userCar.tyreCompound}</span>
+            <span style={{ color: '#555', fontSize: 11, fontVariant: 'tabular-nums' }}>{userCar.tyreAgeLaps}L</span>
+          </div>
+          <div style={{ width: 52, height: 5, background: '#1a1a2a', borderRadius: 2.5, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 2.5,
+              background: tyreHealthColor(userCar.tyreHealth),
+              width: `${userCar.tyreHealth}%`,
+              animation: userCar.tyreHealth <= 20 ? 'tyrePulse 0.7s infinite' : undefined,
+            }} />
+          </div>
+          <span style={{ color: '#333', fontSize: 8, letterSpacing: 0.5 }}>{userCar.tyreHealth.toFixed(0)}%</span>
+        </div>
+      </div>
+
+      {/* Bottom: sectors + controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Pause */}
+        <button onClick={onPause} style={{
+          background: isPaused ? '#1a2a1a' : '#121220',
+          border: `1px solid ${isPaused ? '#39B54A55' : '#2a2a3a'}`,
+          borderRadius: 8, width: 38, height: 30, cursor: 'pointer',
+          color: isPaused ? '#39B54A' : '#777',
+          fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>{isPaused ? '▶' : '⏸'}</button>
+
+        {/* Sector progress bars */}
+        <div style={{ flex: 1, display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
+          {[1, 2, 3].map((s) => (
+            <div key={s} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <div style={{
+                width: 36, height: 4, borderRadius: 2,
+                background: sector > s ? teamColor : sector === s ? `${teamColor}88` : '#1e1e30',
+                boxShadow: sector === s ? `0 0 6px ${teamColor}55` : 'none',
+              }} />
+              <span style={{ color: sector === s ? '#CCC' : '#333', fontSize: 8, fontWeight: sector === s ? 700 : 400 }}>S{s}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Speed */}
+        <button onClick={onSpeed} style={{
+          background: '#121220', border: '1px solid #2a2a3a',
+          borderRadius: 8, padding: '0 14px', height: 30,
+          color: '#E0C040', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+          letterSpacing: 0.5,
+        }}>{SPEED_LABELS[simSpeed]}</button>
       </div>
     </div>
   );
