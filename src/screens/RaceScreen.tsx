@@ -19,8 +19,8 @@ import { getTrackLayout } from '../data/trackLayouts';
 import { positionAlongTrack, formatLapTime } from '../engine/utils';
 
 type Phase = 'strategy' | 'score_entry' | 'lights_out' | 'racing' | 'celebration' | 'finished';
-const SPEED_OPTIONS = [30, 60, 120, 300] as const;
-const SPEED_LABELS: Record<number, string> = { 30: '½×', 60: '1×', 120: '2×', 300: '5×' };
+const SPEED_OPTIONS = [15, 30, 60, 120, 300] as const;
+const SPEED_LABELS: Record<number, string> = { 15: '¼×', 30: '½×', 60: '1×', 120: '2×', 300: '5×' };
 
 const COMPOUND_COLORS: Record<TyreCompound, string> = {
   S: '#FF2800', M: '#E0C040', H: '#EEE', W: '#0090FF', I: '#39B54A',
