@@ -19,8 +19,8 @@ import { getTrackLayout } from '../data/trackLayouts';
 import { positionAlongTrack, formatLapTime } from '../engine/utils';
 
 type Phase = 'strategy' | 'score_entry' | 'lights_out' | 'racing' | 'celebration' | 'finished';
-const SPEED_OPTIONS = [15, 30, 60, 120, 300] as const;
-const SPEED_LABELS: Record<number, string> = { 15: '¼×', 30: '½×', 60: '1×', 120: '2×', 300: '5×' };
+const SPEED_OPTIONS = [5, 15, 30, 60, 120] as const;
+const SPEED_LABELS: Record<number, string> = { 5: '⅛×', 15: '¼×', 30: '½×', 60: '1×', 120: '2×' };
 
 const COMPOUND_COLORS: Record<TyreCompound, string> = {
   S: '#FF2800', M: '#E0C040', H: '#EEE', W: '#0090FF', I: '#39B54A',
@@ -60,7 +60,7 @@ export default function RaceScreen() {
 
   const [phase, setPhase] = useState<Phase>('strategy');
   const [raceState, setRaceState] = useState<RaceState | null>(null);
-  const [simSpeed, setSimSpeed] = useState(60);
+  const [simSpeed, setSimSpeed] = useState(15);
   const [raceScore, setRaceScore] = useState<DailyScore | null>(null);
   const [finalResults, setFinalResults] = useState<FinishedRaceResult[] | null>(null);
   const [strategyChoice, setStrategyChoice] = useState<StrategyChoice>({ startingCompound: 'M', pitWindow: 'medium' });
@@ -429,7 +429,7 @@ export default function RaceScreen() {
   const sector = userCar ? (userCar.lapProgress < 0.33 ? 1 : userCar.lapProgress < 0.66 ? 2 : 3) : 1;
 
   return (
-    <div ref={containerRef} style={{ background: '#0a0a0f', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <div ref={containerRef} style={{ background: '#0a0a0f', minHeight: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       {/* Pit mini-game overlay */}
       {showPitMiniGame && <PitStopMiniGame onComplete={handlePitMiniGameComplete} />}
 
@@ -522,7 +522,7 @@ export default function RaceScreen() {
       </div>
 
       {/* Timing tower */}
-      <div style={{ flex: 1, borderTop: '1px solid #1a1a2a', overflow: 'hidden' }}>
+      <div style={{ borderTop: '1px solid #1a1a2a' }}>
         <TimingTower
           cars={raceState.cars}
           conditions={raceState.conditions}
