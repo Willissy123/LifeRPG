@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Component, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { RaceState, RaceCarState, FinishedRaceResult, StrategyChoice, TyreCompound } from '../types';
+import { RaceState, RaceCarState, FinishedRaceResult, StrategyChoice, TyreCompound, Circuit, RaceConditions } from '../types';
 import { DailyScore } from '../types/scoreTypes';
 import { ScoreEntry } from '../components/ScoreEntry';
-import { TrackMap3D } from '../components/TrackMap3D';
+const TrackMap3DLazy = React.lazy(() =>
+  import('../components/TrackMap3D').then(m => ({ default: m.TrackMap3D }))
+);
 import { TrackMap } from '../components/TrackMap';
 import { TimingTower } from '../components/TimingTower';
 import { LapChart } from '../components/LapChart';
@@ -56,9 +58,9 @@ function useCountUp(target: number, durationMs = 1200): number {
 
 // Falls back to 2D canvas if WebGL/Three.js crashes on device
 interface TrackProps {
-  circuit: Parameters<typeof TrackMap3D>[0]['circuit'];
-  cars: Parameters<typeof TrackMap3D>[0]['cars'];
-  conditions: Parameters<typeof TrackMap3D>[0]['conditions'];
+  circuit: Circuit;
+  cars: RaceCarState[];
+  conditions: RaceConditions;
   width: number;
   height: number;
 }
@@ -78,13 +80,15 @@ class SafeTrackMap extends Component<TrackProps, { crashed: boolean }> {
       );
     }
     return (
-      <TrackMap3D
-        circuit={this.props.circuit}
-        cars={this.props.cars}
-        conditions={this.props.conditions}
-        width={this.props.width}
-        height={this.props.height}
-      />
+      <Suspense fallback={<div style={{ width: this.props.width, height: this.props.height, background: '#08080f' }} />}>
+        <TrackMap3DLazy
+          circuit={this.props.circuit}
+          cars={this.props.cars}
+          conditions={this.props.conditions}
+          width={this.props.width}
+          height={this.props.height}
+        />
+      </Suspense>
     );
   }
 }
