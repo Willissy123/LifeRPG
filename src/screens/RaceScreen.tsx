@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { RaceState, RaceCarState, FinishedRaceResult, StrategyChoice, TyreCompound } from '../types';
 import { DailyScore } from '../types/scoreTypes';
 import { ScoreEntry } from '../components/ScoreEntry';
-import { TrackMap } from '../components/TrackMap';
+import { TrackMap3D } from '../components/TrackMap3D';
 import { TimingTower } from '../components/TimingTower';
 import { LapChart } from '../components/LapChart';
 import { RaceStartLights } from '../components/RaceStartLights';
@@ -468,7 +468,7 @@ export default function RaceScreen() {
 
       {/* Track map */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <TrackMap
+        <TrackMap3D
           circuit={circuit}
           cars={raceState.cars}
           conditions={raceState.conditions}
