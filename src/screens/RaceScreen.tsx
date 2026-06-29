@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { RaceState, RaceCarState, FinishedRaceResult, StrategyChoice, TyreCompound } from '../types';
 import { DailyScore } from '../types/scoreTypes';
 import { ScoreEntry } from '../components/ScoreEntry';
 import { TrackMap3D } from '../components/TrackMap3D';
+import { TrackMap } from '../components/TrackMap';
 import { TimingTower } from '../components/TimingTower';
 import { LapChart } from '../components/LapChart';
 import { RaceStartLights } from '../components/RaceStartLights';
@@ -51,6 +52,41 @@ function useCountUp(target: number, durationMs = 1200): number {
     return () => cancelAnimationFrame(raf);
   }, [target, durationMs]);
   return val;
+}
+
+// Falls back to 2D canvas if WebGL/Three.js crashes on device
+interface TrackProps {
+  circuit: Parameters<typeof TrackMap3D>[0]['circuit'];
+  cars: Parameters<typeof TrackMap3D>[0]['cars'];
+  conditions: Parameters<typeof TrackMap3D>[0]['conditions'];
+  width: number;
+  height: number;
+}
+class SafeTrackMap extends Component<TrackProps, { crashed: boolean }> {
+  state = { crashed: false };
+  static getDerivedStateFromError() { return { crashed: true }; }
+  render() {
+    if (this.state.crashed) {
+      return (
+        <TrackMap
+          circuit={this.props.circuit}
+          cars={this.props.cars}
+          conditions={this.props.conditions}
+          width={this.props.width}
+          height={this.props.height}
+        />
+      );
+    }
+    return (
+      <TrackMap3D
+        circuit={this.props.circuit}
+        cars={this.props.cars}
+        conditions={this.props.conditions}
+        width={this.props.width}
+        height={this.props.height}
+      />
+    );
+  }
 }
 
 export default function RaceScreen() {
@@ -468,7 +504,7 @@ export default function RaceScreen() {
 
       {/* Track map */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <TrackMap3D
+        <SafeTrackMap
           circuit={circuit}
           cars={raceState.cars}
           conditions={raceState.conditions}

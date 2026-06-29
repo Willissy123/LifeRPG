@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect, useState, Suspense } from 'react';
+import React, { useRef, useMemo, useEffect, useState, Suspense, Component } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -279,6 +279,23 @@ export interface TrackMap3DProps {
   height: number;
 }
 
+class WebGLBoundary extends Component<{ w: number; h: number; children: React.ReactNode }, { dead: boolean }> {
+  state = { dead: false };
+  static getDerivedStateFromError() { return { dead: true }; }
+  render() {
+    if (this.state.dead) {
+      return (
+        <div style={{ width: this.props.w, height: this.props.h, background: '#08080f',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 28 }}>🏎</span>
+          <span style={{ color: '#444', fontSize: 11 }}>3D unavailable on this device</span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function TrackMap3D({ circuit, cars, conditions, width, height }: TrackMap3DProps) {
   const [tvMode,   setTvMode]   = useState(false);
   const [resetCam, setResetCam] = useState(0);
@@ -292,6 +309,7 @@ export function TrackMap3D({ circuit, cars, conditions, width, height }: TrackMa
 
   return (
     <div style={{ width, height, position: 'relative', background: '#08080f', overflow: 'hidden' }}>
+      <WebGLBoundary w={width} h={height}>
       <Suspense fallback={<div style={{ width, height, background: '#08080f' }} />}>
         <Canvas
           gl={{ antialias: true, alpha: false, powerPreference: 'default' }}
@@ -318,6 +336,7 @@ export function TrackMap3D({ circuit, cars, conditions, width, height }: TrackMa
           )}
         </Canvas>
       </Suspense>
+      </WebGLBoundary>
 
       {/* Camera mode toggle */}
       <button
