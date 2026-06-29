@@ -80,7 +80,7 @@ function TVCamera({ cars, curve }: { cars: RaceCarState[]; curve: THREE.CatmullR
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
     const prevFov = cam.fov;
-    cam.fov = 58;
+    cam.fov = 72;
     cam.updateProjectionMatrix();
     return () => {
       cam.fov = prevFov;
@@ -94,11 +94,11 @@ function TVCamera({ cars, curve }: { cars: RaceCarState[]; curve: THREE.CatmullR
 
     const lp     = Math.max(0.001, Math.min(0.9999, uc.lapProgress));
     const tan    = curve.getTangentAt(lp);
-    const carPos = new THREE.Vector3(uc.trackPosition.x, 0, uc.trackPosition.y);
+    const carPos = new THREE.Vector3(uc.trackPosition.x, 0.5, uc.trackPosition.y);
 
-    // Helicopter broadcast angle: 20 behind, 11 above, looking 14 ahead
-    const wantPos  = carPos.clone().addScaledVector(tan, -20).add(new THREE.Vector3(0, 11, 0));
-    const wantLook = carPos.clone().addScaledVector(tan, 14);
+    // Low ground-level broadcast cam: 7 behind, 2.2 above, looking 9 ahead
+    const wantPos  = carPos.clone().addScaledVector(tan, -7).add(new THREE.Vector3(0, 2.2, 0));
+    const wantLook = carPos.clone().addScaledVector(tan, 9).add(new THREE.Vector3(0, 0.3, 0));
 
     if (!ready.current) {
       camPos.current.copy(wantPos);
@@ -106,8 +106,8 @@ function TVCamera({ cars, curve }: { cars: RaceCarState[]; curve: THREE.CatmullR
       ready.current = true;
     }
 
-    camPos.current.lerp(wantPos,   0.055);
-    camLook.current.lerp(wantLook, 0.055);
+    camPos.current.lerp(wantPos,   0.09);
+    camLook.current.lerp(wantLook, 0.09);
 
     camera.position.copy(camPos.current);
     camera.lookAt(camLook.current);
@@ -180,7 +180,7 @@ function TrackScene({ circuit, cars, conditions, tvMode, resetCam }: SceneProps)
       }
 
       {/* Atmosphere */}
-      <fog attach="fog" args={[tvMode ? '#0a0a14' : '#08080f', tvMode ? 80 : 160, tvMode ? 240 : 420]} />
+      <fog attach="fog" args={[tvMode ? '#0a0a14' : '#08080f', tvMode ? 18 : 160, tvMode ? 90 : 420]} />
       <color attach="background" args={[tvMode ? '#0a0a14' : '#08080f']} />
 
       {/* Lighting */}
@@ -361,7 +361,7 @@ export function TrackMap3D({ circuit, cars, conditions, width, height }: TrackMa
           background: 'rgba(8,8,20,0.7)', borderRadius: 6, padding: '3px 10px',
           color: '#888', fontSize: 10, letterSpacing: 1, pointerEvents: 'none',
         }}>
-          FOLLOWING YOUR CAR
+          📺 CINEMATIC CAM
         </div>
       )}
     </div>
