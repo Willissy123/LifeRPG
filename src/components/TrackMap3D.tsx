@@ -152,7 +152,7 @@ function TrackScene({ circuit, cars, conditions, tvMode, resetCam }: SceneProps)
   const { curve, cPts, cx, cy, sfAngle, sfPos } = useMemo(() => {
     const pts3 = wps.map(p => new THREE.Vector3(p.x, 0, p.y));
     const curve = new THREE.CatmullRomCurve3(pts3, true, 'catmullrom', 0.5);
-    const cPts  = curve.getPoints(280).slice(0, 280);
+    const cPts  = curve.getPoints(200).slice(0, 200);
 
     const xs = wps.map(p => p.x), ys = wps.map(p => p.y);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
@@ -255,12 +255,6 @@ function TrackScene({ circuit, cars, conditions, tvMode, resetCam }: SceneProps)
                 <boxGeometry args={[s * 0.32, s * 0.10, s * 0.28]} />
                 <meshStandardMaterial color={color} emissive={color} emissiveIntensity={emi * 0.6} roughness={0.2} metalness={0.75} />
               </mesh>
-              <pointLight
-                color={color}
-                intensity={isUser ? 6 : car.position <= 3 ? 2.5 : 1.2}
-                distance={isUser ? 14 : 8}
-                decay={2}
-              />
               {isUser && <PulseRing />}
             </group>
           );
@@ -310,35 +304,36 @@ export function TrackMap3D({ circuit, cars, conditions, width, height }: TrackMa
   return (
     <div style={{ width, height, position: 'relative', background: '#08080f', overflow: 'hidden' }}>
       <WebGLBoundary w={width} h={height}>
-      <Suspense fallback={<div style={{ width, height, background: '#08080f' }} />}>
-        <Canvas
-          gl={{ antialias: true, alpha: false, powerPreference: 'default' }}
-          camera={{ fov: 44, near: 0.5, far: 700 }}
-          style={{ width: '100%', height: '100%' }}
-        >
-          <TrackScene
-            circuit={circuit}
-            cars={cars}
-            conditions={conditions}
-            tvMode={tvMode}
-            resetCam={resetCam}
-          />
-          {!tvMode && (
-            <OrbitControls
-              enablePan={false}
-              minDistance={20}
-              maxDistance={260}
-              minPolarAngle={0.05}
-              maxPolarAngle={Math.PI / 3}
-              rotateSpeed={0.4}
-              zoomSpeed={0.9}
+        <Suspense fallback={<div style={{ width, height, background: '#08080f' }} />}>
+          <Canvas
+            gl={{ antialias: false, alpha: false, powerPreference: 'default', failIfMajorPerformanceCaveat: false }}
+            dpr={[1, 1.5]}
+            camera={{ fov: 44, near: 0.5, far: 600 }}
+            style={{ width: '100%', height: '100%' }}
+          >
+            <TrackScene
+              circuit={circuit}
+              cars={cars}
+              conditions={conditions}
+              tvMode={tvMode}
+              resetCam={resetCam}
             />
-          )}
-        </Canvas>
-      </Suspense>
+            {!tvMode && (
+              <OrbitControls
+                enablePan={false}
+                minDistance={20}
+                maxDistance={260}
+                minPolarAngle={0.05}
+                maxPolarAngle={Math.PI / 3}
+                rotateSpeed={0.4}
+                zoomSpeed={0.9}
+              />
+            )}
+          </Canvas>
+        </Suspense>
       </WebGLBoundary>
 
-      {/* Camera mode toggle */}
+      {/* Toggle always renders — even if WebGL fell back to 2D */}
       <button
         onClick={toggleMode}
         style={{
@@ -354,7 +349,6 @@ export function TrackMap3D({ circuit, cars, conditions, width, height }: TrackMa
         {tvMode ? '📺 TV' : '🗺 MAP'}
       </button>
 
-      {/* TV mode label */}
       {tvMode && (
         <div style={{
           position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
